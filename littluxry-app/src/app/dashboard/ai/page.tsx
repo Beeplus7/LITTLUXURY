@@ -21,9 +21,9 @@ export default function AIPage() {
             Try
           </p>
           <ul className="mt-3 list-disc space-y-1 pl-5">
-            <li>Upload images → set title/price → Publish to catalog</li>
-            <li>Paste a Farfetch / ASOS / brand PDP URL → Extract</li>
-            <li>Create beige variant · Add emerald green variant</li>
+            <li>Paste a PDP URL → Analyze images + color/size variants</li>
+            <li>Toggle which variants to import → Import to catalog</li>
+            <li>Upload your own photos, or chat “Add emerald green variant”</li>
           </ul>
         </div>
       </div>

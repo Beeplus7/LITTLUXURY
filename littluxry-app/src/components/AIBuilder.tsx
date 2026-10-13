@@ -16,6 +16,7 @@ import type { ProductVariant } from '@/data/products'
 import {
   productFromExtract,
   type ExtractedProduct,
+  type ExtractedVariant,
 } from '@/lib/extractProduct'
 import { readImageAsDataUrl } from '@/lib/readImageFile'
 import { cn } from '@/lib/cn'
@@ -44,10 +45,12 @@ type Draft = {
   sourceUrl?: string
   images: string[]
   brand?: string | null
+  variants: ExtractedVariant[]
+  analysisNote?: string
 }
 
 function emptyDraft(): Draft {
-  return { title: '', description: '', price: 198, images: [] }
+  return { title: '', description: '', price: 198, images: [], variants: [] }
 }
 
 export function AIBuilder({ productId }: { productId?: string }) {
@@ -63,7 +66,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      text: 'AI Shop Builder ready. Upload images, paste a product URL to extract, or ask for a color variant.',
+      text: 'AI Shop Builder ready. Paste a product URL — I’ll analyze images & variants for import. You can also upload photos or ask for a color variant.',
     },
   ])
 
@@ -77,7 +80,6 @@ export function AIBuilder({ productId }: { productId?: string }) {
     push('user', prompt)
     setInput('')
 
-    // URL pasted into chat → extract
     if (/^https?:\/\//i.test(prompt)) {
       setLink(prompt)
       void extractFromUrl(prompt)
@@ -85,6 +87,11 @@ export function AIBuilder({ productId }: { productId?: string }) {
     }
 
     const lower = prompt.toLowerCase()
+    if (/\b(import|publish|add)\b.*\b(variant|all)\b/.test(lower) && draft) {
+      publishDraft()
+      return
+    }
+
     const colorKey = Object.keys(COLOR_MAP).find((k) => lower.includes(k))
     const targetId =
       productId ??
@@ -94,7 +101,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
     if (!targetId || !colorKey) {
       push(
         'assistant',
-        'I can create color variants, extract a product URL, or use uploaded images. Mention a color (beige, emerald…) or paste a link.',
+        'Paste a product URL to analyze images & variants, upload images, or mention a color like beige / emerald.',
       )
       return
     }
@@ -129,7 +136,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
       return
     }
     setExtracting(true)
-    push('user', `Extract ${url}`)
+    push('user', `Analyze ${url}`)
     try {
       const res = await fetch('/api/extract-product', {
         method: 'POST',
@@ -139,34 +146,45 @@ export function AIBuilder({ productId }: { productId?: string }) {
       const data = (await res.json()) as {
         ok?: boolean
         product?: ExtractedProduct
+        analysis?: ExtractedProduct['analysis']
         error?: string
       }
       if (!res.ok || !data.product) {
-        throw new Error(data.error || 'Extract failed')
+        throw new Error(data.error || 'Analyze failed')
       }
       const p = data.product
-      setDraft((prev) => ({
+      const variants = (p.variants ?? []).map((v) => ({
+        ...v,
+        selected: v.selected !== false,
+      }))
+      const images = [
+        ...p.images,
+        ...(p.image ? [p.image] : []),
+      ].filter((v, i, a) => a.indexOf(v) === i)
+
+      setDraft({
         title: p.title,
         description: p.description,
         price: p.price && p.price > 0 ? Math.round(p.price) : 198,
         sourceUrl: p.url,
         brand: p.brand,
-        images: [
-          ...(prev?.images ?? []),
-          ...p.images,
-          ...(p.image ? [p.image] : []),
-        ].filter((v, i, a) => a.indexOf(v) === i),
-      }))
+        images,
+        variants,
+        analysisNote: `${p.analysis?.imageCount ?? images.length} images · ${
+          p.analysis?.variantCount ?? variants.length
+        } variants · via ${(p.analysis?.sources ?? []).join(', ') || 'page'}`,
+      })
+
       push(
         'assistant',
-        `Extracted “${p.title}”${p.price ? ` · $${Math.round(p.price)}` : ''}${
-          p.image ? ' · image found' : ''
-        }. Review the draft below, then Publish to catalog.`,
+        `Analyzed “${p.title}”: ${images.length} image(s), ${variants.length} variant(s)${
+          p.price ? ` · from $${Math.round(p.price)}` : ''
+        }. Toggle variants below, then Publish to import.`,
       )
-      toast('Product details extracted')
+      toast('Link analyzed')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Extract failed'
-      push('assistant', `Couldn’t extract that link: ${msg}`)
+      const msg = e instanceof Error ? e.message : 'Analyze failed'
+      push('assistant', `Couldn’t analyze that link: ${msg}`)
       toast(msg)
     } finally {
       setExtracting(false)
@@ -186,12 +204,12 @@ export function AIBuilder({ productId }: { productId?: string }) {
         return {
           ...base,
           title: base.title || fileTitle(files[0]!),
-          images: [...base.images, ...loaded].slice(0, 12),
+          images: [...base.images, ...loaded].slice(0, 16),
         }
       })
       push(
         'assistant',
-        `Uploaded ${loaded.length} image${loaded.length === 1 ? '' : 's'}. Add a title/price or extract a URL, then Publish.`,
+        `Uploaded ${loaded.length} image${loaded.length === 1 ? '' : 's'}. Publish or paste a URL to pull variants too.`,
       )
       toast(`${loaded.length} image${loaded.length === 1 ? '' : 's'} added`)
     } catch (e) {
@@ -202,6 +220,26 @@ export function AIBuilder({ productId }: { productId?: string }) {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  function toggleVariant(id: string) {
+    setDraft((d) => {
+      if (!d) return d
+      return {
+        ...d,
+        variants: d.variants.map((v) =>
+          v.id === id ? { ...v, selected: !v.selected } : v,
+        ),
+      }
+    })
+  }
+
+  function selectAllVariants(on: boolean) {
+    setDraft((d) =>
+      d
+        ? { ...d, variants: d.variants.map((v) => ({ ...v, selected: on })) }
+        : d,
+    )
   }
 
   function publishDraft() {
@@ -215,6 +253,10 @@ export function AIBuilder({ productId }: { productId?: string }) {
       return
     }
 
+    const selectedIds = draft.variants
+      .filter((v) => v.selected !== false)
+      .map((v) => v.id)
+
     const extracted: ExtractedProduct = {
       url: draft.sourceUrl || 'https://litt-luxury.com',
       title: draft.title.trim(),
@@ -224,16 +266,23 @@ export function AIBuilder({ productId }: { productId?: string }) {
       price: draft.price,
       currency: 'USD',
       brand: draft.brand ?? null,
+      variants: draft.variants,
+      analysis: {
+        imageCount: draft.images.length,
+        variantCount: draft.variants.length,
+        sources: ['ai-builder'],
+      },
     }
     const product = productFromExtract(extracted, {
       localImages: draft.images,
+      selectedVariantIds: selectedIds.length ? selectedIds : undefined,
     })
     addProduct(product)
     push(
       'assistant',
-      `Published “${product.name}” to the catalog ($${product.price}). It’s live in Shop and Products.`,
+      `Imported “${product.name}” with ${product.images.length} image(s) and ${product.variants.length} variant(s). Live in Shop & Products.`,
     )
-    toast('Product published')
+    toast(`Imported ${product.variants.length} variants`)
     setDraft(null)
     setLink('')
   }
@@ -253,13 +302,30 @@ export function AIBuilder({ productId }: { productId?: string }) {
     const images = [...draft.images, ...product.images].filter(
       (v, i, a) => a.indexOf(v) === i,
     )
+    const selectedVars = draft.variants.filter((v) => v.selected !== false)
+    for (const v of selectedVars) {
+      addVariant(targetId, {
+        id: `${targetId}-${v.id}`,
+        color: [v.color, v.size].filter(Boolean).join(' / ') || v.name,
+        hex: v.hex,
+        price: v.price && v.price > 0 ? Math.round(v.price) : product.price,
+        stock: 8,
+        sku: v.sku || `LL-IMP-${v.id.slice(0, 8).toUpperCase()}`,
+        image: v.image || draft.images[0],
+      })
+    }
     updateProduct(targetId, { images })
     push(
       'assistant',
-      `Attached ${draft.images.length} image(s) to ${product.menuLabel}.`,
+      `Attached ${draft.images.length} image(s)${
+        selectedVars.length ? ` + ${selectedVars.length} variant(s)` : ''
+      } to ${product.menuLabel}.`,
     )
-    toast('Images attached to product')
+    toast('Attached to product')
   }
+
+  const selectedCount =
+    draft?.variants.filter((v) => v.selected !== false).length ?? 0
 
   return (
     <div className="flex h-full min-h-[560px] flex-col rounded-2xl border border-white/10 bg-zinc-950">
@@ -278,7 +344,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
             <input
               value={link}
               onChange={(e) => setLink(e.target.value)}
-              placeholder="Paste product URL (ASOS, Farfetch, Zara…)"
+              placeholder="Paste product URL to analyze images & variants"
               className="w-full rounded-full border border-white/10 bg-black py-2 pl-9 pr-3 text-sm outline-none focus:border-[#D4AF37]/50"
             />
           </div>
@@ -293,7 +359,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
             ) : (
               <PackagePlus size={14} />
             )}
-            Extract
+            Analyze
           </button>
         </div>
 
@@ -332,11 +398,18 @@ export function AIBuilder({ productId }: { productId?: string }) {
       </div>
 
       {draft ? (
-        <div className="border-b border-white/10 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
-              Draft product
-            </p>
+        <div className="max-h-[340px] space-y-3 overflow-y-auto border-b border-white/10 p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
+                Import draft
+              </p>
+              {draft.analysisNote ? (
+                <p className="mt-0.5 text-[11px] text-[#6a655c]">
+                  {draft.analysisNote}
+                </p>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => setDraft(null)}
@@ -346,74 +419,138 @@ export function AIBuilder({ productId }: { productId?: string }) {
               <Trash2 size={14} />
             </button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[96px_1fr]">
-            <div className="flex flex-wrap gap-1 sm:flex-col">
-              {draft.images.slice(0, 4).map((src, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={i}
-                  src={src}
-                  alt=""
-                  className="h-16 w-16 rounded-lg object-cover ring-1 ring-white/10"
-                />
-              ))}
-              {!draft.images.length ? (
-                <div className="grid h-16 w-16 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4]">
-                  No img
-                </div>
-              ) : null}
-            </div>
-            <div className="grid gap-2">
-              <input
-                value={draft.title}
-                onChange={(e) =>
-                  setDraft((d) => (d ? { ...d, title: e.target.value } : d))
-                }
-                placeholder="Product title"
-                className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {draft.images.slice(0, 12).map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={src}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
               />
-              <textarea
-                value={draft.description}
+            ))}
+            {!draft.images.length ? (
+              <div className="grid h-14 w-14 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4]">
+                No img
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-2">
+            <input
+              value={draft.title}
+              onChange={(e) =>
+                setDraft((d) => (d ? { ...d, title: e.target.value } : d))
+              }
+              placeholder="Product title"
+              className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+            <textarea
+              value={draft.description}
+              onChange={(e) =>
+                setDraft((d) =>
+                  d ? { ...d, description: e.target.value } : d,
+                )
+              }
+              rows={2}
+              placeholder="Description"
+              className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+            <label className="flex items-center gap-2 text-[12px] text-[#b8b0a4]">
+              Base $
+              <input
+                type="number"
+                value={draft.price}
                 onChange={(e) =>
                   setDraft((d) =>
-                    d ? { ...d, description: e.target.value } : d,
+                    d ? { ...d, price: Number(e.target.value) || 0 } : d,
                   )
                 }
-                rows={2}
-                placeholder="Description"
-                className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+                className="w-24 rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm text-white"
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-[12px] text-[#b8b0a4]">
-                  $
-                  <input
-                    type="number"
-                    value={draft.price}
-                    onChange={(e) =>
-                      setDraft((d) =>
-                        d
-                          ? { ...d, price: Number(e.target.value) || 0 }
-                          : d,
-                      )
-                    }
-                    className="w-24 rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm text-white"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={publishDraft}
-                  className="rounded-full bg-[#D4AF37] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-black"
-                >
-                  Publish to catalog
-                </button>
-              </div>
-              {draft.sourceUrl ? (
-                <p className="truncate text-[11px] text-[#6a655c]">
-                  Source: {draft.sourceUrl}
-                </p>
-              ) : null}
-            </div>
+            </label>
           </div>
+
+          {draft.variants.length ? (
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#b8b0a4]">
+                  Variants ({selectedCount}/{draft.variants.length})
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => selectAllVariants(true)}
+                    className="text-[10px] uppercase tracking-wider text-[#D4AF37]"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectAllVariants(false)}
+                    className="text-[10px] uppercase tracking-wider text-[#6a655c]"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+              <ul className="grid max-h-36 gap-1.5 overflow-y-auto">
+                {draft.variants.map((v) => (
+                  <li key={v.id}>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/50 px-2 py-1.5 text-[12px] hover:border-[#D4AF37]/30">
+                      <input
+                        type="checkbox"
+                        checked={v.selected !== false}
+                        onChange={() => toggleVariant(v.id)}
+                        className="accent-[#D4AF37]"
+                      />
+                      {v.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={v.image}
+                          alt=""
+                          className="h-8 w-8 rounded object-cover"
+                        />
+                      ) : (
+                        <span
+                          className="h-8 w-8 rounded ring-1 ring-white/20"
+                          style={{ background: v.hex }}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-[#f5f0e8]">
+                        {[v.color, v.size].filter(Boolean).join(' · ') || v.name}
+                      </span>
+                      <span className="text-[#D4AF37]">
+                        {v.price ? `$${Math.round(v.price)}` : '—'}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-[12px] text-[#6a655c]">
+              No variants found on page — a default variant will be created on
+              publish.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={publishDraft}
+            className="w-full rounded-full bg-[#D4AF37] py-2.5 text-[11px] font-semibold uppercase tracking-wider text-black"
+          >
+            Import {selectedCount || 1} variant
+            {(selectedCount || 1) === 1 ? '' : 's'} · {draft.images.length}{' '}
+            image
+            {draft.images.length === 1 ? '' : 's'}
+          </button>
+          {draft.sourceUrl ? (
+            <p className="truncate text-[11px] text-[#6a655c]">
+              Source: {draft.sourceUrl}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -443,7 +580,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder='URL, or “Add emerald green variant”'
+          placeholder='Product URL, or “Add emerald green variant”'
           className="flex-1 rounded-full border border-white/10 bg-black px-4 py-2 text-sm outline-none focus:border-[#D4AF37]/50"
         />
         <button
