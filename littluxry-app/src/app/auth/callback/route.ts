@@ -24,6 +24,17 @@ export async function GET(request: Request) {
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
   const roleHint = searchParams.get('role')
+  const oauthError = searchParams.get('error')
+  const oauthDesc = searchParams.get('error_description')
+
+  // Supabase / Google returned an error (e.g. invalid client secret)
+  if (oauthError && !code) {
+    const q = new URLSearchParams({
+      error: oauthError,
+      ...(oauthDesc ? { error_description: oauthDesc } : {}),
+    })
+    return NextResponse.redirect(`${origin}/signin?${q}`)
+  }
 
   if (code) {
     const supabase = createClient()

@@ -22,13 +22,31 @@ That Supabase callback is required for Google → Supabase → LITTLUXRY.
 
 ## After Create
 1. Copy **Client ID** and **Client secret**.
-2. Supabase Dashboard → **Authentication** → **Providers** → **Google** → enable → paste Client ID + Secret → Save.
-3. Supabase → **Authentication** → **URL Configuration**:
+2. Put them in `littluxry-app/.env.local`:
+   ```bash
+   GOOGLE_CLIENT_ID=….apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-…
+   ```
+3. Sync into Supabase (preferred):
+   ```bash
+   bash scripts/sync-google-oauth.sh
+   ```
+   Or manually: Supabase → **Authentication** → **Providers** → **Google** → enable → paste Client ID + Secret → Save.
+4. Supabase → **Authentication** → **URL Configuration**:
    - Site URL: `https://litt-luxury.com`
    - Redirect allow list:
      - `http://localhost:3000/auth/callback`
      - `https://litt-luxury.com/auth/callback`
      - `https://www.litt-luxury.com/auth/callback`
+
+## If you see “Unable to exchange external code” / invalid_client
+The Client **secret** is wrong or rotated. Fix:
+
+1. [Google Cloud → Credentials](https://console.cloud.google.com/apis/credentials) → OAuth client **Lift-Luxury**
+2. **Reset secret** → copy the new `GOCSPX-…` value immediately
+3. Update `GOOGLE_CLIENT_SECRET` in `.env.local`
+4. Run `bash scripts/sync-google-oauth.sh` (probes Google first; refuses bad secrets)
+5. Retry https://litt-luxury.com/signin → Continue with Google
 
 ## App routes
 - Customer: `/signup` wizard · `/signin`

@@ -23,7 +23,16 @@ function SignInInner() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
-  const [error, setError] = useState(params.get('error') ? 'Google auth failed — check provider setup' : '')
+  const [error, setError] = useState(() => {
+    const err = params.get('error')
+    if (!err) return ''
+    const desc = params.get('error_description')?.replace(/\+/g, ' ')
+    if (desc) return desc
+    if (err === 'auth' || err === 'server_error') {
+      return 'Google auth failed — Client Secret may be wrong. Reset it in Google Cloud and re-sync.'
+    }
+    return 'Google auth failed — check provider setup'
+  })
   const [loading, setLoading] = useState(false)
 
   async function onSubmit(e: FormEvent) {
