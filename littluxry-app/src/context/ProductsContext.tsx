@@ -20,8 +20,8 @@ import {
 type ProductsContextValue = {
   products: Product[]
   getProduct: (id: string) => Product | undefined
-  updateProduct: (id: string, patch: Partial<Product>) => void
-  addProduct: (product: Product) => void
+  updateProduct: (id: string, patch: Partial<Product>) => boolean
+  addProduct: (product: Product) => boolean
   removeProduct: (id: string) => void
   duplicateProduct: (id: string) => Product | null
   addVariant: (productId: string, variant: ProductVariant) => void
@@ -178,34 +178,61 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     [products],
   )
 
-  const updateProduct = useCallback((id: string, patch: Partial<Product>) => {
-    setProductsState((prev) =>
-      prev.map((p) => (p.id === id || p.slug === id ? { ...p, ...patch } : p)),
-    )
-  }, [])
-
-  const addProduct = useCallback((product: Product) => {
-    const safe: Product = {
-      ...product,
-      images: Array.isArray(product.images) ? product.images : [],
-      colors: Array.isArray(product.colors) ? product.colors : [],
-      features: Array.isArray(product.features) ? product.features : [],
-      variants: Array.isArray(product.variants) ? product.variants : [],
+  const commitCatalog = useCallback((next: Product[]): boolean => {
+    const result = persistProducts(next)
+    if (!result.ok) {
+      notifyPersistIssue(
+        'Could not save catalog on this device (storage full). Try Library images.',
+      )
+      return false
     }
-    removedIdsRef.current.delete(safe.id)
-    removedIdsRef.current.delete(safe.slug)
-    writeRemovedIds(removedIdsRef.current)
-    setProductsState((prev) => {
-      if (prev.some((p) => p.id === safe.id)) {
-        return prev.map((p) => (p.id === safe.id ? safe : p))
-      }
-      return [safe, ...prev]
-    })
+    if (result.stripped) {
+      const lite = stripHeavyMedia(next)
+      skipNextPersistRef.current = true
+      setProductsState(lite)
+      notifyPersistIssue(
+        'Large uploads were replaced with placeholders — prefer From library.',
+      )
+      return true
+    }
+    skipNextPersistRef.current = true
+    setProductsState(next)
+    return true
   }, [])
 
-  const removeProduct = useCallback((id: string) => {
-    setProductsState((prev) => {
-      const target = prev.find((p) => p.id === id || p.slug === id)
+  const updateProduct = useCallback(
+    (id: string, patch: Partial<Product>): boolean => {
+      const next = products.map((p) =>
+        p.id === id || p.slug === id ? { ...p, ...patch } : p,
+      )
+      return commitCatalog(next)
+    },
+    [products, commitCatalog],
+  )
+
+  const addProduct = useCallback(
+    (product: Product): boolean => {
+      const safe: Product = {
+        ...product,
+        images: Array.isArray(product.images) ? product.images : [],
+        colors: Array.isArray(product.colors) ? product.colors : [],
+        features: Array.isArray(product.features) ? product.features : [],
+        variants: Array.isArray(product.variants) ? product.variants : [],
+      }
+      removedIdsRef.current.delete(safe.id)
+      removedIdsRef.current.delete(safe.slug)
+      writeRemovedIds(removedIdsRef.current)
+      const next = products.some((p) => p.id === safe.id)
+        ? products.map((p) => (p.id === safe.id ? safe : p))
+        : [safe, ...products]
+      return commitCatalog(next)
+    },
+    [products, commitCatalog],
+  )
+
+  const removeProduct = useCallback(
+    (id: string) => {
+      const target = products.find((p) => p.id === id || p.slug === id)
       if (target) {
         removedIdsRef.current.add(target.id)
         removedIdsRef.current.add(target.slug)
@@ -213,9 +240,10 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         removedIdsRef.current.add(id)
       }
       writeRemovedIds(removedIdsRef.current)
-      return prev.filter((p) => p.id !== id && p.slug !== id)
-    })
-  }, [])
+      commitCatalog(products.filter((p) => p.id !== id && p.slug !== id))
+    },
+    [products, commitCatalog],
+  )
 
   const duplicateProduct = useCallback(
     (id: string): Product | null => {
@@ -238,10 +266,10 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         colors: [...(source.colors ?? [])],
         features: [...(source.features ?? [])],
       }
-      setProductsState((prev) => [created, ...prev])
-      return created
+      const ok = commitCatalog([created, ...products])
+      return ok ? created : null
     },
-    [products],
+    [products, commitCatalog],
   )
 
   const addVariant = useCallback(

@@ -88,7 +88,10 @@ function ProductEditorModal({
   mode: EditorMode
   initial: Product
   onClose: () => void
-  onSave: (product: Product) => void
+  onSave: (
+    product: Product,
+    opts: { publish: boolean },
+  ) => boolean | void
 }) {
   const { toast } = useToast()
   const imageRef = useRef<HTMLInputElement>(null)
@@ -105,6 +108,8 @@ function ProductEditorModal({
   const [uploadingVideo, setUploadingVideo] = useState(false)
   const [imageUrlDraft, setImageUrlDraft] = useState('')
   const [customColourOpen, setCustomColourOpen] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const customColourNameRef = useRef<HTMLInputElement>(null)
   const [variantDraft, setVariantDraft] = useState({
     color: 'Black',
@@ -248,24 +253,32 @@ function ProductEditorModal({
     }
   }
 
-  function save() {
+  function buildProduct(): Product | null {
     if (!form.name.trim()) {
-      toast('Product name is required')
-      return
+      setFormError('Product name is required')
+      return null
     }
-    if (!form.images.length && !form.video) {
-      toast('Add at least one image or video')
-      return
-    }
+
+    let images = [...form.images]
+    let video = form.video
     const uploadWeight =
-      form.images.reduce((n, src) => n + (src.startsWith('data:') ? src.length : 0), 0) +
-      (form.video?.startsWith('data:') ? form.video.length : 0)
+      images.reduce(
+        (n, src) => n + (src.startsWith('data:') ? src.length : 0),
+        0,
+      ) + (video?.startsWith('data:') ? video.length : 0)
+
+    // Keep publish working on mobile: drop oversized data uploads, keep library paths
     if (uploadWeight > 3_500_000) {
-      toast(
-        'Uploaded media is too large for this device. Use From library or smaller files.',
-      )
-      return
+      images = images.filter((src) => !src.startsWith('data:'))
+      if (video?.startsWith('data:')) video = undefined
+      toast('Large uploads trimmed — use From library for best results')
     }
+
+    if (!images.length && !video) {
+      images = ['/assets/fringe-hero.png']
+      toast('No media attached — using a placeholder image')
+    }
+
     const baseSlug = slugify(form.name) || `product-${Date.now()}`
     const id = form.id || baseSlug
     const slug = form.slug || baseSlug
@@ -287,25 +300,32 @@ function ProductEditorModal({
             },
           ]
     ).map((v) => ({
-      id: `${id}-${slugify(v.color)}-${slugify(v.size)}-${v.key.slice(-4)}`,
-      color: v.color,
-      hex: v.hex,
-      size: v.size,
-      price: v.price,
-      stock: v.stock,
-      sku: v.sku,
+      id: `${id}-${slugify(v.color) || 'clr'}-${slugify(v.size) || 'sz'}-${v.key.slice(-4)}`,
+      color: v.color || 'Default',
+      hex: v.hex || '#111111',
+      size: v.size || 'OS',
+      price: Number(v.price) || Number(form.price) || 0,
+      stock: Number(v.stock) || 0,
+      sku: v.sku || `LL-${baseSlug.slice(0, 6).toUpperCase()}`,
     }))
 
-    const colors = Array.from(
-      new Map(
-        finalVariants.map((v) => [
-          v.color,
-          { name: v.color, hex: v.hex, label: v.color },
-        ]),
-      ).values(),
-    )
+    const colorMap = new Map<
+      string,
+      { name: string; hex: string; label: string }
+    >()
+    for (const v of finalVariants) {
+      if (!colorMap.has(v.color)) {
+        colorMap.set(v.color, {
+          name: v.color,
+          hex: v.hex,
+          label: v.color,
+        })
+      }
+    }
+    const colors = Array.from(colorMap.values())
 
-    const product: Product = {
+    setFormError(null)
+    return {
       ...form,
       id,
       slug,
@@ -323,14 +343,38 @@ function ProductEditorModal({
       category: line,
       productLine: line,
       shopCategory: form.shopCategory,
-      images: form.images.length
-        ? form.images
-        : form.video
-          ? [form.video]
-          : ['/assets/fringe-hero.png'],
-      video: form.video || undefined,
+      images,
+      video: video || undefined,
     }
-    onSave(product)
+  }
+
+  function save(publish: boolean) {
+    if (busy) return
+    const product = buildProduct()
+    if (!product) {
+      toast('Product name is required')
+      return
+    }
+    setBusy(true)
+    try {
+      // Keep form ids in sync so Save → Publish works on the same product
+      setForm((f) => ({
+        ...f,
+        id: product.id,
+        slug: product.slug,
+        images: product.images,
+        video: product.video,
+      }))
+      const ok = onSave(product, { publish })
+      if (ok === false) {
+        setFormError(
+          'Could not publish — device storage is full. Use From library images.',
+        )
+        toast('Publish failed — try From library media')
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -848,13 +892,33 @@ function ProductEditorModal({
           </ul>
         </div>
 
-        <button
-          type="button"
-          onClick={save}
-          className="mt-5 w-full rounded-full bg-[#D4AF37] py-3 text-[12px] font-semibold uppercase tracking-wider text-black"
-        >
-          {mode === 'create' ? 'Create product' : 'Save changes'}
-        </button>
+        {formError ? (
+          <p className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+            {formError}
+          </p>
+        ) : null}
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => save(false)}
+            className="rounded-full border border-white/20 py-3 text-[12px] font-semibold uppercase tracking-wider text-[#e8e6e1] disabled:opacity-50"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => save(true)}
+            className="rounded-full bg-[#D4AF37] py-3 text-[12px] font-semibold uppercase tracking-wider text-black disabled:opacity-50"
+          >
+            {busy ? 'Publishing…' : 'Submit · Publish'}
+          </button>
+        </div>
+        <p className="mt-2 text-center text-[11px] text-[#6a655c]">
+          Save keeps editing · Submit publishes to the shop
+        </p>
       </div>
 
       <MediaPickerModal
@@ -1018,18 +1082,31 @@ function ProductsPageInner() {
 
       {editor ? (
         <ProductEditorModal
+          key={editor.product.id || 'new-product'}
           mode={editor.mode}
           initial={editor.product}
           onClose={() => setEditor(null)}
-          onSave={(product) => {
-            if (editor.mode === 'create') {
-              addProduct(product)
-              toast('Product created')
+          onSave={(product, opts) => {
+            const exists = products.some(
+              (p) => p.id === product.id || p.slug === product.slug,
+            )
+            const ok = exists
+              ? updateProduct(product.id, product)
+              : addProduct(product)
+
+            if (!ok) return false
+
+            if (opts.publish) {
+              toast('Product published to shop')
+              setEditor(null)
+              window.setTimeout(() => {
+                router.push(`/shop/${product.id}`)
+              }, 250)
             } else {
-              updateProduct(product.id, product)
-              toast('Product saved — shop updated')
+              toast('Product saved')
+              setEditor({ mode: 'edit', product })
             }
-            setEditor(null)
+            return true
           }}
         />
       ) : null}
