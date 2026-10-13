@@ -1,14 +1,18 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Copy,
+  Film,
+  ImagePlus,
+  Library,
+  Loader2,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
   X,
-  Sparkles,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useProducts } from '@/context/ProductsContext'
@@ -22,6 +26,9 @@ import {
   type ProductVariant,
 } from '@/data/products'
 import { SHOP_CATEGORIES, type ShopCategoryId } from '@/data/categories'
+import { MediaPickerModal } from '@/components/MediaPickerModal'
+import type { MediaItem } from '@/data/media'
+import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -50,12 +57,13 @@ function emptyProduct(): Product {
     description: '',
     colors: [],
     features: [],
-    images: ['/assets/fringe-hero.png'],
+    images: [],
     gradient: 'from-[#1a1a1a] via-[#2a2a2a] to-[#0a0a0a]',
     category: 'tote',
     productLine: 'tote',
     shopCategory: 'women-bags',
     variants: [],
+    video: undefined,
   }
 }
 
@@ -83,6 +91,8 @@ function ProductEditorModal({
   onSave: (product: Product) => void
 }) {
   const { toast } = useToast()
+  const imageRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState<Product>(initial)
   const [variants, setVariants] = useState<DraftVariant[]>(() =>
     toDraftVariants(initial),
@@ -90,6 +100,10 @@ function ProductEditorModal({
   const [featureText, setFeatureText] = useState(
     (initial.features || []).join('\n'),
   )
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadingVideo, setUploadingVideo] = useState(false)
+  const [imageUrlDraft, setImageUrlDraft] = useState('')
   const [variantDraft, setVariantDraft] = useState({
     color: 'Black',
     hex: '#111111',
@@ -141,9 +155,100 @@ function ProductEditorModal({
     setVariants((prev) => prev.filter((v) => v.key !== key))
   }
 
+  function addImages(urls: string[]) {
+    if (!urls.length) return
+    setForm((f) => ({
+      ...f,
+      images: [...f.images, ...urls]
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .slice(0, 16),
+    }))
+  }
+
+  function removeImage(src: string) {
+    setForm((f) => ({
+      ...f,
+      images: f.images.filter((img) => img !== src),
+    }))
+  }
+
+  function addFromLibrary(items: MediaItem[]) {
+    if (!items.length) return
+    const images = items.filter((m) => m.type === 'image').map((m) => m.src)
+    const video = items.find((m) => m.type === 'video')?.src
+    const labelHint = (items[0]?.label ?? '')
+      .replace(/[-_]+/g, ' ')
+      .trim()
+    setForm((f) => ({
+      ...f,
+      name: f.name || labelHint,
+      images: [...f.images, ...images]
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .slice(0, 16),
+      video: video ?? f.video,
+    }))
+    setLibraryOpen(false)
+    const parts = [
+      images.length
+        ? `${images.length} image${images.length === 1 ? '' : 's'}`
+        : null,
+      video ? '1 video' : null,
+    ].filter(Boolean)
+    toast(`Added ${parts.join(' + ')} from library`)
+  }
+
+  async function onUploadImages(files: FileList | null) {
+    if (!files?.length) return
+    setUploading(true)
+    try {
+      const loaded: string[] = []
+      for (const file of Array.from(files).slice(0, 8)) {
+        loaded.push(await readImageAsDataUrl(file))
+      }
+      addImages(loaded)
+      if (!form.name && files[0]) {
+        patchForm({
+          name: files[0].name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
+        })
+      }
+      toast(`${loaded.length} image${loaded.length === 1 ? '' : 's'} uploaded`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Image upload failed')
+    } finally {
+      setUploading(false)
+      if (imageRef.current) imageRef.current.value = ''
+    }
+  }
+
+  async function onUploadVideo(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+    setUploadingVideo(true)
+    try {
+      const dataUrl = await readVideoAsDataUrl(file)
+      setForm((f) => ({
+        ...f,
+        video: dataUrl,
+        name:
+          f.name ||
+          file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
+      }))
+      toast('Video uploaded')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Video upload failed')
+    } finally {
+      setUploadingVideo(false)
+      if (videoRef.current) videoRef.current.value = ''
+    }
+  }
+
   function save() {
     if (!form.name.trim()) {
       toast('Product name is required')
+      return
+    }
+    if (!form.images.length && !form.video) {
+      toast('Add at least one image or video')
       return
     }
     const baseSlug = slugify(form.name) || `product-${Date.now()}`
@@ -203,7 +308,12 @@ function ProductEditorModal({
       category: line,
       productLine: line,
       shopCategory: form.shopCategory,
-      images: form.images.length ? form.images : ['/assets/fringe-hero.png'],
+      images: form.images.length
+        ? form.images
+        : form.video
+          ? [form.video]
+          : ['/assets/fringe-hero.png'],
+      video: form.video || undefined,
     }
     onSave(product)
   }
@@ -318,20 +428,158 @@ function ProductEditorModal({
               className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
             />
           </label>
-          <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
-            Image URL
-            <input
-              value={form.images[0] || ''}
-              onChange={(e) =>
-                patchForm({
-                  images: e.target.value
-                    ? [e.target.value, ...form.images.slice(1)]
-                    : form.images,
-                })
-              }
-              placeholder="/assets/… or https://…"
-              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
-            />
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-white/10 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Media</h3>
+            <p className="text-[11px] text-[#6a655c]">
+              Library · upload image · upload video
+            </p>
+          </div>
+
+          <input
+            ref={imageRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => void onUploadImages(e.target.files)}
+          />
+          <input
+            ref={videoRef}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+            className="hidden"
+            onChange={(e) => void onUploadVideo(e.target.files)}
+          />
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setLibraryOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37]"
+            >
+              <Library size={13} />
+              From library
+            </button>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => imageRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#b8b0a4] disabled:opacity-50"
+            >
+              {uploading ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <ImagePlus size={13} />
+              )}
+              Upload image
+            </button>
+            <button
+              type="button"
+              disabled={uploadingVideo}
+              onClick={() => videoRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#b8b0a4] disabled:opacity-50"
+            >
+              {uploadingVideo ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Film size={13} />
+              )}
+              Upload video
+            </button>
+          </div>
+
+          {form.images.length || form.video ? (
+            <div className="mt-4 space-y-3">
+              {form.images.length ? (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {form.images.map((src) => (
+                    <div
+                      key={src.slice(0, 64)}
+                      className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(src)}
+                        className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white opacity-90 hover:bg-red-500/80"
+                        aria-label="Remove image"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {form.video ? (
+                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
+                  <video
+                    src={form.video}
+                    controls
+                    playsInline
+                    className="max-h-52 w-full object-contain"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => {
+                        const next = { ...f }
+                        delete next.video
+                        return next
+                      })
+                    }
+                    className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[10px] uppercase tracking-wider text-white hover:bg-red-500/80"
+                  >
+                    <Trash2 size={11} />
+                    Remove video
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-3 text-[12px] text-[#6a655c]">
+              No media yet — pick from the library or upload an image/video.
+            </p>
+          )}
+
+          <label className="mt-3 block text-[11px] text-[#b8b0a4]">
+            Or paste image URL
+            <div className="mt-1 flex gap-2">
+              <input
+                value={imageUrlDraft}
+                onChange={(e) => setImageUrlDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  const url = imageUrlDraft.trim()
+                  if (!url) return
+                  addImages([url])
+                  setImageUrlDraft('')
+                }}
+                placeholder="/assets/… or https://…"
+                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const url = imageUrlDraft.trim()
+                  if (!url) return
+                  addImages([url])
+                  setImageUrlDraft('')
+                }}
+                className="shrink-0 rounded-full border border-white/15 px-3 py-2 text-[11px] uppercase tracking-wider text-[#b8b0a4]"
+              >
+                Add
+              </button>
+            </div>
           </label>
         </div>
 
@@ -517,6 +765,14 @@ function ProductEditorModal({
           {mode === 'create' ? 'Create product' : 'Save changes'}
         </button>
       </div>
+
+      <MediaPickerModal
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onConfirm={addFromLibrary}
+        maxSelect={16}
+        title="Add media from library"
+      />
     </div>
   )
 }
