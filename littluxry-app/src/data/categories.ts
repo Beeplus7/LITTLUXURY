@@ -6,6 +6,12 @@ export type ShopCategoryId =
   | 'sneakers'
   | 'jacket'
   | 'accessories'
+  | 'men'
+  | 'men-sweatshirt'
+  | 'men-tshirts'
+  | 'men-sneakers'
+  | 'men-shoes'
+  | 'men-accessories'
 
 export type ShopCategory = {
   id: ShopCategoryId
@@ -56,6 +62,42 @@ export const SHOP_CATEGORIES: ShopCategory[] = [
     slug: 'accessories',
     label: 'Accessories',
     description: 'Belts, scarves, and finishing pieces.',
+  },
+  {
+    id: 'men',
+    slug: 'men',
+    label: 'Men',
+    description: 'Ready-to-wear essentials for him.',
+  },
+  {
+    id: 'men-sweatshirt',
+    slug: 'men-sweatshirt',
+    label: 'Men Sweatshirt',
+    description: 'Premium fleece and atelier sweatshirts.',
+  },
+  {
+    id: 'men-tshirts',
+    slug: 'men-tshirts',
+    label: 'Men T-Shirts',
+    description: 'Refined tees with clean lines.',
+  },
+  {
+    id: 'men-sneakers',
+    slug: 'men-sneakers',
+    label: 'Men Sneakers',
+    description: 'Luxury trainers for everyday pace.',
+  },
+  {
+    id: 'men-shoes',
+    slug: 'men-shoes',
+    label: 'Men Shoes',
+    description: 'Leather footwear and formal pairs.',
+  },
+  {
+    id: 'men-accessories',
+    slug: 'men-accessories',
+    label: 'Men Accessories',
+    description: 'Belts, wallets, and finishing pieces.',
   },
 ]
 

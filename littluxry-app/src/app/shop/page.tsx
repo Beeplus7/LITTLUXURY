@@ -40,7 +40,7 @@ function ShopContent() {
         <p className="mt-3 max-w-xl text-sm text-[#b8b0a4]">
           {activeCategory
             ? activeCategory.description
-            : 'Browse Women Bags, Dresses, Shoes, Sneakers, Jackets & Accessories.'}
+            : 'Browse Women, Men, Bags, Dresses, Shoes, Sneakers, Jackets & Accessories.'}
         </p>
 
         <CategoryNav active={categorySlug} className="mt-8" />

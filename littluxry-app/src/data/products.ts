@@ -32,13 +32,21 @@ export const FOOTWEAR_SIZES = [
 export const ONE_SIZE = ['OS'] as const
 
 export function sizesForShopCategory(shopCategory: ShopCategoryId): string[] {
-  if (shopCategory === 'shoes' || shopCategory === 'sneakers') {
+  if (
+    shopCategory === 'shoes' ||
+    shopCategory === 'sneakers' ||
+    shopCategory === 'men-shoes' ||
+    shopCategory === 'men-sneakers'
+  ) {
     return [...FOOTWEAR_SIZES]
   }
   if (
     shopCategory === 'women-dress' ||
     shopCategory === 'women' ||
-    shopCategory === 'jacket'
+    shopCategory === 'jacket' ||
+    shopCategory === 'men' ||
+    shopCategory === 'men-sweatshirt' ||
+    shopCategory === 'men-tshirts'
   ) {
     return [...APPAREL_SIZES]
   }
@@ -49,8 +57,20 @@ export function productLineForShopCategory(
   shopCategory: ShopCategoryId,
 ): ProductLine {
   if (shopCategory === 'women-bags') return 'tote'
-  if (shopCategory === 'shoes' || shopCategory === 'sneakers') return 'footwear'
-  if (shopCategory === 'accessories') return 'accessory'
+  if (
+    shopCategory === 'shoes' ||
+    shopCategory === 'sneakers' ||
+    shopCategory === 'men-shoes' ||
+    shopCategory === 'men-sneakers'
+  ) {
+    return 'footwear'
+  }
+  if (
+    shopCategory === 'accessories' ||
+    shopCategory === 'men-accessories'
+  ) {
+    return 'accessory'
+  }
   return 'apparel'
 }
 

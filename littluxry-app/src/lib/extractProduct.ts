@@ -106,12 +106,16 @@ function guessLine(text: string): ProductLine {
 
 function guessShopCategory(line: ProductLine, text: string): ShopCategoryId {
   const t = text.toLowerCase()
+  const isMen = /\bmen'?s?\b|\bmens\b|\bfor him\b/.test(t)
   if (line === 'fringe' || line === 'bucket' || line === 'tote') return 'women-bags'
   if (/\bdress\b/.test(t)) return 'women-dress'
-  if (/\bsneaker|trainer\b/.test(t)) return 'sneakers'
-  if (line === 'footwear') return 'shoes'
+  if (/\bsweatshirt|hoodie|crewneck\b/.test(t) && isMen) return 'men-sweatshirt'
+  if (/\bt-?shirt|tee\b/.test(t) && isMen) return 'men-tshirts'
+  if (/\bsneaker|trainer\b/.test(t)) return isMen ? 'men-sneakers' : 'sneakers'
+  if (line === 'footwear') return isMen ? 'men-shoes' : 'shoes'
   if (/\bjacket|coat|blazer\b/.test(t)) return 'jacket'
-  if (line === 'accessory') return 'accessories'
+  if (line === 'accessory') return isMen ? 'men-accessories' : 'accessories'
+  if (isMen) return 'men'
   return 'women'
 }
 

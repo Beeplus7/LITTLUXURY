@@ -136,6 +136,12 @@ export default function HomePage() {
             ['sneakers', 'Sneakers'],
             ['jacket', 'Jacket'],
             ['accessories', 'Accessories'],
+            ['men', 'Men'],
+            ['men-sweatshirt', 'Men Sweatshirt'],
+            ['men-tshirts', 'Men T-Shirts'],
+            ['men-sneakers', 'Men Sneakers'],
+            ['men-shoes', 'Men Shoes'],
+            ['men-accessories', 'Men Accessories'],
           ].map(([slug, label]) => (
             <Link
               key={slug}
