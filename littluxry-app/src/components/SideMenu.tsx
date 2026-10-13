@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { X } from 'lucide-react'
 import { useUI } from '@/context/UIContext'
 import { useProducts } from '@/context/ProductsContext'
-import { MENU_PRODUCT_ORDER } from '@/data/products'
+import { isPublishedProduct, MENU_PRODUCT_ORDER } from '@/data/products'
 import { SHOP_CATEGORIES } from '@/data/categories'
 import { cn } from '@/lib/cn'
 
@@ -12,8 +12,9 @@ export function SideMenu() {
   const { menuOpen, setMenuOpen } = useUI()
   const { products } = useProducts()
 
+  const live = products.filter(isPublishedProduct)
   const ordered = MENU_PRODUCT_ORDER.map((id) =>
-    products.find((p) => p.id === id),
+    live.find((p) => p.id === id),
   ).filter(Boolean)
 
   return (
@@ -59,7 +60,7 @@ export function SideMenu() {
             All
           </Link>
           {SHOP_CATEGORIES.map((cat) => {
-            const count = products.filter((p) => p.shopCategory === cat.id).length
+            const count = live.filter((p) => p.shopCategory === cat.id).length
             return (
               <Link
                 key={cat.id}

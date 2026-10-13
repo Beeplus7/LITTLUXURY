@@ -92,6 +92,8 @@ export type ProductLine =
   | 'footwear'
   | 'accessory'
 
+export type ProductStatus = 'draft' | 'published'
+
 export type Product = {
   id: string
   slug: string
@@ -112,6 +114,16 @@ export type Product = {
   shopCategory: ShopCategoryId
   variants: ProductVariant[]
   video?: string
+  /** draft = saved in admin only; published = live on shop */
+  status?: ProductStatus
+}
+
+export function isPublishedProduct(product: Product): boolean {
+  return (product.status ?? 'published') === 'published'
+}
+
+export function isDraftProduct(product: Product): boolean {
+  return product.status === 'draft'
 }
 
 export const COLOR_SWATCHES: ProductColor[] = [
@@ -718,5 +730,6 @@ export function normalizeProduct(raw: Partial<Product> & { id: string }): Produc
     shopCategory,
     variants: raw.variants ?? base?.variants ?? [],
     video: raw.video ?? base?.video,
+    status: raw.status === 'draft' ? 'draft' : 'published',
   }
 }

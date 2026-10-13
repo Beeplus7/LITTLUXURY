@@ -6,6 +6,7 @@ import { ProductCard } from '@/components/ProductCard'
 import { VideoHero } from '@/components/VideoHero'
 import { Footer } from '@/components/Footer'
 import { useProducts } from '@/context/ProductsContext'
+import { isPublishedProduct } from '@/data/products'
 import { useCart } from '@/context/CartContext'
 import { useToast } from '@/lib/toast'
 import { Star } from 'lucide-react'
@@ -40,7 +41,7 @@ export default function HomePage() {
     return () => window.clearInterval(id)
   }, [])
 
-  const featured = products.slice(0, 7)
+  const featured = products.filter(isPublishedProduct).slice(0, 7)
 
   return (
     <div>

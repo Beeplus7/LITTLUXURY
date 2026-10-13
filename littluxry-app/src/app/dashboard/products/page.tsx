@@ -18,6 +18,8 @@ import Link from 'next/link'
 import { useProducts } from '@/context/ProductsContext'
 import {
   COLOR_SWATCHES,
+  isDraftProduct,
+  isPublishedProduct,
   productLineForShopCategory,
   sizesForShopCategory,
   slugify,
@@ -67,6 +69,7 @@ function emptyProduct(): Product {
     shopCategory: 'women-bags',
     variants: [],
     video: undefined,
+    status: 'draft',
   }
 }
 
@@ -261,7 +264,7 @@ function ProductEditorModal({
     }
   }
 
-  function buildProduct(): Product | null {
+  function buildProduct(publish: boolean): Product | null {
     if (!form.name.trim()) {
       setFormError('Product name is required')
       return null
@@ -353,12 +356,13 @@ function ProductEditorModal({
       shopCategory: form.shopCategory,
       images,
       video: video || undefined,
+      status: publish ? 'published' : 'draft',
     }
   }
 
   function save(publish: boolean) {
     if (busy) return
-    const product = buildProduct()
+    const product = buildProduct(publish)
     if (!product) {
       toast('Product name is required')
       return
@@ -501,7 +505,10 @@ function ProductEditorModal({
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">Media</h3>
             <p className="text-[11px] text-[#6a655c]">
-              Library · upload image · upload video
+              Up to {MAX_PRODUCT_IMAGES} images · library · upload · video
+              {form.images.length
+                ? ` · ${form.images.length}/${MAX_PRODUCT_IMAGES}`
+                : ''}
             </p>
           </div>
 
@@ -933,7 +940,7 @@ function ProductEditorModal({
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         onConfirm={addFromLibrary}
-        maxSelect={16}
+        maxSelect={MAX_PRODUCT_IMAGES}
         title="Add media from library"
       />
     </div>
@@ -947,29 +954,64 @@ function ProductsPageInner() {
     addProduct,
     removeProduct,
     duplicateProduct,
+    getProduct,
   } = useProducts()
   const { toast } = useToast()
   const router = useRouter()
   const params = useSearchParams()
+  const statusFilter = params.get('status')
   const [editor, setEditor] = useState<{
     mode: EditorMode
     product: Product
   } | null>(null)
 
+  const visibleProducts = useMemo(() => {
+    if (statusFilter === 'saved' || statusFilter === 'draft') {
+      return products.filter(isDraftProduct)
+    }
+    if (statusFilter === 'published') {
+      return products.filter(isPublishedProduct)
+    }
+    return products
+  }, [products, statusFilter])
+
   useEffect(() => {
     if (params.get('new') === '1') {
       setEditor({ mode: 'create', product: emptyProduct() })
-      router.replace('/dashboard/products')
+      router.replace(
+        statusFilter === 'saved' || statusFilter === 'draft'
+          ? '/dashboard/products?status=saved'
+          : '/dashboard/products',
+      )
+      return
     }
-  }, [params, router])
+    const editId = params.get('edit')
+    if (editId) {
+      const product = getProduct(editId)
+      if (product) {
+        setEditor({ mode: 'edit', product: { ...product } })
+      }
+      router.replace(
+        statusFilter === 'saved' || statusFilter === 'draft'
+          ? '/dashboard/products?status=saved'
+          : '/dashboard/products',
+      )
+    }
+  }, [params, router, getProduct, statusFilter])
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="serif text-3xl">Products</h1>
+          <h1 className="serif text-3xl">
+            {statusFilter === 'saved' || statusFilter === 'draft'
+              ? 'Saved products'
+              : 'Products'}
+          </h1>
           <p className="mt-1 text-sm text-[#b8b0a4]">
-            Manual catalog edits sync to shop & homepage.
+            {statusFilter === 'saved' || statusFilter === 'draft'
+              ? 'Drafts saved in admin — not live on the shop until you Submit · Publish.'
+              : 'Manual catalog edits sync to shop & homepage.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -993,11 +1035,50 @@ function ProductsPageInner() {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(
+          [
+            ['all', 'All', products.length],
+            [
+              'published',
+              'Published',
+              products.filter(isPublishedProduct).length,
+            ],
+            ['saved', 'Saved', products.filter(isDraftProduct).length],
+          ] as const
+        ).map(([id, label, count]) => {
+          const active =
+            id === 'all'
+              ? !statusFilter || statusFilter === 'all'
+              : statusFilter === id ||
+                (id === 'saved' && statusFilter === 'draft')
+          return (
+            <Link
+              key={id}
+              href={
+                id === 'all'
+                  ? '/dashboard/products'
+                  : `/dashboard/products?status=${id}`
+              }
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider',
+                active
+                  ? 'border-[#D4AF37]/50 bg-[#D4AF37]/15 text-[#D4AF37]'
+                  : 'border-white/10 text-[#8a8a8a] hover:border-white/20',
+              )}
+            >
+              {label} · {count}
+            </Link>
+          )
+        })}
+      </div>
+
       <div className="overflow-x-auto rounded-2xl border border-white/10">
         <table className="w-full min-w-[820px] text-left text-sm">
           <thead className="bg-zinc-950 text-[11px] uppercase tracking-[0.16em] text-[#b8b0a4]">
             <tr>
               <th className="px-4 py-3">Product</th>
+              <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Price</th>
               <th className="px-4 py-3">Variants</th>
@@ -1006,7 +1087,19 @@ function ProductsPageInner() {
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => (
+            {visibleProducts.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="px-4 py-12 text-center text-sm text-[#6a655c]"
+                >
+                  {statusFilter === 'saved' || statusFilter === 'draft'
+                    ? 'No saved drafts yet — use Save on a product to keep it here.'
+                    : 'No products in this list.'}
+                </td>
+              </tr>
+            ) : null}
+            {visibleProducts.map((p) => (
               <tr key={p.id} className="border-t border-white/10">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -1027,6 +1120,18 @@ function ProductsPageInner() {
                       <p className="text-[12px] text-[#b8b0a4]">{p.id}</p>
                     </div>
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={cn(
+                      'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider',
+                      isDraftProduct(p)
+                        ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                        : 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
+                    )}
+                  >
+                    {isDraftProduct(p) ? 'Saved' : 'Published'}
+                  </span>
                 </td>
                 <td className="px-4 py-3 capitalize text-[#b8b0a4]">
                   {(p.shopCategory ?? 'women').replace(/-/g, ' ')}
@@ -1111,7 +1216,7 @@ function ProductsPageInner() {
                 router.push(`/shop/${product.id}`)
               }, 250)
             } else {
-              toast('Product saved')
+              toast('Product saved — find it under Saved products')
               setEditor({ mode: 'edit', product })
             }
             return true

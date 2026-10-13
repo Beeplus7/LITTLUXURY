@@ -10,7 +10,7 @@ import { Footer } from '@/components/Footer'
 import { useProducts } from '@/context/ProductsContext'
 import { useCart } from '@/context/CartContext'
 import { useUI } from '@/context/UIContext'
-import { sizesForShopCategory } from '@/data/products'
+import { isPublishedProduct, sizesForShopCategory } from '@/data/products'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -22,7 +22,9 @@ export default function ProductPage() {
   const { setMenuOpen } = useUI()
   const { toast } = useToast()
 
-  const product = getProduct(params.id)
+  const rawProduct = getProduct(params.id)
+  const product =
+    rawProduct && isPublishedProduct(rawProduct) ? rawProduct : undefined
   const [color, setColor] = useState('')
   const [size, setSize] = useState('')
   const [qty, setQty] = useState(1)

@@ -7,6 +7,7 @@ import { CategoryNav } from '@/components/CategoryNav'
 import { Footer } from '@/components/Footer'
 import { useProducts } from '@/context/ProductsContext'
 import { getCategoryBySlug, SHOP_CATEGORIES } from '@/data/categories'
+import { isPublishedProduct } from '@/data/products'
 import { Suspense } from 'react'
 
 function ShopContent() {
@@ -14,19 +15,23 @@ function ShopContent() {
   const searchParams = useSearchParams()
   const categorySlug = searchParams.get('category')
   const activeCategory = getCategoryBySlug(categorySlug)
+  const live = useMemo(
+    () => products.filter(isPublishedProduct),
+    [products],
+  )
 
   const filtered = useMemo(() => {
-    if (!activeCategory) return products
-    return products.filter((p) => p.shopCategory === activeCategory.id)
-  }, [products, activeCategory])
+    if (!activeCategory) return live
+    return live.filter((p) => p.shopCategory === activeCategory.id)
+  }, [live, activeCategory])
 
   const counts = useMemo(() => {
-    const map: Record<string, number> = { all: products.length }
+    const map: Record<string, number> = { all: live.length }
     for (const cat of SHOP_CATEGORIES) {
-      map[cat.id] = products.filter((p) => p.shopCategory === cat.id).length
+      map[cat.id] = live.filter((p) => p.shopCategory === cat.id).length
     }
     return map
-  }, [products])
+  }, [live])
 
   return (
     <div>

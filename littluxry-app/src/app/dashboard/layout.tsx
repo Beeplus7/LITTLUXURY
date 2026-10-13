@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState, type ReactNode } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import {
   LayoutDashboard,
   Package,
@@ -21,14 +21,38 @@ import {
   X,
   ExternalLink,
   Inbox,
+  Bookmark,
+  Pencil,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useSupportMessages } from '@/context/SupportMessagesContext'
+import { useProducts } from '@/context/ProductsContext'
+import { isDraftProduct } from '@/data/products'
 import { cn } from '@/lib/cn'
 
-const NAV = [
+type NavItem = {
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+  badge?: string
+  newBadge?: boolean
+  match?: 'saved' | 'products'
+}
+
+const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard/products', label: 'Products', icon: Package },
+  {
+    href: '/dashboard/products',
+    label: 'Products',
+    icon: Package,
+    match: 'products',
+  },
+  {
+    href: '/dashboard/products?status=saved',
+    label: 'Saved products',
+    icon: Bookmark,
+    match: 'saved',
+  },
   { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag, badge: '12' },
   { href: '/dashboard/messages', label: 'Messages', icon: Inbox },
   { href: '/dashboard/inventory', label: 'Inventory', icon: Layers },
@@ -47,12 +71,20 @@ const NAV = [
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+function DashboardShell({ children }: { children: ReactNode }) {
   const { isLoggedIn, hydrated, user, logout } = useAuth()
   const { unreadCount } = useSupportMessages()
+  const { products } = useProducts()
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const status = searchParams.get('status')
+  const viewingSaved =
+    pathname.startsWith('/dashboard/products') &&
+    (status === 'saved' || status === 'draft')
+  const savedDrafts = products.filter(isDraftProduct).slice(0, 8)
+  const savedCount = products.filter(isDraftProduct).length
 
   useEffect(() => {
     if (!hydrated) return
@@ -110,14 +142,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {NAV.map((item) => {
           const Icon = item.icon
+          const onProducts = pathname.startsWith('/dashboard/products')
           const active =
             item.href === '/dashboard'
               ? pathname === '/dashboard'
-              : pathname.startsWith(item.href)
+              : item.match === 'saved'
+                ? viewingSaved
+                : item.match === 'products'
+                  ? onProducts && !viewingSaved
+                  : pathname.startsWith(item.href.split('?')[0]!)
           const badge =
             item.href === '/dashboard/messages' && unreadCount > 0
               ? String(unreadCount)
-              : item.badge
+              : item.match === 'saved' && savedCount > 0
+                ? String(savedCount)
+                : item.badge
           return (
             <Link
               key={item.href}
@@ -138,7 +177,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <span
                   className={cn(
                     'rounded-full border px-2 py-0.5 text-[11px]',
-                    item.href === '/dashboard/messages'
+                    item.href === '/dashboard/messages' || item.match === 'saved'
                       ? 'border-[#D4AF37]/40 bg-[#D4AF37]/15 text-[#D4AF37]'
                       : 'border-[#2a2a2a] bg-[#1f1f1f] text-[#9a9a9a]',
                   )}
@@ -154,6 +193,46 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </Link>
           )
         })}
+
+        {savedDrafts.length > 0 ? (
+          <div className="mt-3 border-t border-[#1a1a1a] pt-3">
+            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#6a6a6a]">
+              Saved product buttons
+            </p>
+            <div className="space-y-1">
+              {savedDrafts.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/dashboard/products?status=saved&edit=${encodeURIComponent(p.id)}`}
+                  className="flex items-center gap-2 rounded-[10px] border border-transparent px-3 py-2 text-[12px] text-[#a0a0a0] transition hover:border-[#2a2a2a] hover:bg-[#151515] hover:text-[#e8e6e1]"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={
+                      (p.images ?? []).find(
+                        (src) =>
+                          !src.endsWith('.mp4') &&
+                          !src.startsWith('data:video'),
+                      ) || '/assets/fringe-hero.png'
+                    }
+                    alt=""
+                    className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-white/10"
+                  />
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <Pencil size={12} className="shrink-0 text-[#D4AF37]" />
+                </Link>
+              ))}
+              {savedCount > savedDrafts.length ? (
+                <Link
+                  href="/dashboard/products?status=saved"
+                  className="block px-3 py-1.5 text-[11px] text-[#D4AF37]"
+                >
+                  View all saved · {savedCount}
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </nav>
 
       <div className="mt-auto border-t border-[#1a1a1a] p-4">
@@ -248,5 +327,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[50vh] place-items-center text-[#b8b0a4]">
+          Loading dashboard…
+        </div>
+      }
+    >
+      <DashboardShell>{children}</DashboardShell>
+    </Suspense>
   )
 }
