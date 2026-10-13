@@ -3,17 +3,18 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
+import { Shield } from 'lucide-react'
 import { GoogleAuthButton } from '@/components/GoogleAuthButton'
 import { VideoHero } from '@/components/VideoHero'
-import { DEMO_CREDENTIALS, useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/lib/toast'
 
 export default function AdminSignInPage() {
   const { login } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
-  const [email, setEmail] = useState(DEMO_CREDENTIALS.email)
-  const [password, setPassword] = useState(DEMO_CREDENTIALS.password)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -38,15 +39,31 @@ export default function AdminSignInPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-transparent" />
         <div className="absolute bottom-10 left-10">
           <p className="text-[11px] uppercase tracking-[0.2em] text-[#D4AF37]">
-            Admin access
+            Restricted
           </p>
-          <h1 className="serif mt-2 text-4xl">LL Command</h1>
+          <h1 className="serif mt-2 text-4xl">Admin only</h1>
         </div>
       </div>
 
       <div className="flex items-center px-6 py-12 md:px-12">
         <div className="w-full max-w-md">
-          <p className="serif text-center text-3xl tracking-[0.18em]">
+          <div className="rounded-2xl border border-[#D4AF37]/35 bg-gradient-to-b from-[#D4AF37]/10 to-transparent p-5">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#D4AF37] text-black">
+                <Shield size={18} />
+              </span>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#D4AF37]">
+                  Admin only
+                </p>
+                <p className="text-[12px] text-[#b8b0a4]">
+                  Protected console · authorized owners only
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="serif mt-8 text-center text-3xl tracking-[0.18em]">
             LITT <span className="text-[#D4AF37]">LUXRY</span>
           </p>
           <p className="mt-2 text-center text-[12px] uppercase tracking-[0.18em] text-[#b8b0a4]">
@@ -72,8 +89,10 @@ export default function AdminSignInPage() {
               <input
                 type="email"
                 required
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="Owner email"
                 className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-sm outline-none focus:border-[#D4AF37]/50"
               />
             </label>
@@ -82,8 +101,10 @@ export default function AdminSignInPage() {
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
                 className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-sm outline-none focus:border-[#D4AF37]/50"
               />
             </label>
@@ -96,12 +117,6 @@ export default function AdminSignInPage() {
               {loading ? 'Signing in…' : 'Enter dashboard'}
             </button>
           </form>
-
-          <p className="mt-6 rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/5 p-4 text-[12px] text-[#b8b0a4]">
-            Demo owner: <span className="text-[#D4AF37]">{DEMO_CREDENTIALS.email}</span>
-            <br />
-            Password: <span className="text-[#D4AF37]">{DEMO_CREDENTIALS.password}</span>
-          </p>
 
           <p className="mt-6 text-center text-[12px] text-[#6a655c]">
             Need an admin seat?{' '}

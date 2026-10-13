@@ -33,7 +33,7 @@ type AuthContextValue = {
     email: string,
     password: string,
     opts?: { preferAdmin?: boolean },
-  ) => Promise<{ ok: boolean; error?: string }>
+  ) => Promise<{ ok: boolean; error?: string; role?: AppRole }>
   signUp: (input: {
     email: string
     password: string
@@ -51,10 +51,38 @@ type AuthContextValue = {
 }
 
 const STORAGE_KEY = 'littluxry_auth'
+const DEMO_SESSION_KEY = 'littluxry_demo_session'
 const DEMO_EMAIL = 'owner@littluxry.com'
 const DEMO_PASSWORD = 'admin123'
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+function readLocalUser(): User | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as User
+  } catch {
+    return null
+  }
+}
+
+function isDemoSessionActive(): boolean {
+  try {
+    return localStorage.getItem(DEMO_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function setDemoSessionActive(on: boolean) {
+  try {
+    if (on) localStorage.setItem(DEMO_SESSION_KEY, '1')
+    else localStorage.removeItem(DEMO_SESSION_KEY)
+  } catch {
+    /* ignore */
+  }
+}
 
 function mapUser(sb: SbUser | null, fallback?: Partial<User> | null): User | null {
   if (!sb) return fallback?.email ? (fallback as User) : null
@@ -95,13 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    let local: User | null = null
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) local = JSON.parse(raw) as User
-    } catch {
-      /* ignore */
-    }
+    const local = readLocalUser()
 
     if (!supabase) {
       setUser(local)
@@ -110,17 +132,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let unsub = () => {}
+
+    function applySession(next: Session | null) {
+      setSession(next)
+      if (next?.user) {
+        setDemoSessionActive(false)
+        setUser(mapUser(next.user, readLocalUser()))
+        return
+      }
+      // Preserve offline demo-owner session across refresh (no Supabase JWT)
+      if (isDemoSessionActive()) {
+        const demoLocal = readLocalUser()
+        if (
+          demoLocal?.email === DEMO_EMAIL &&
+          demoLocal.role === 'owner'
+        ) {
+          setUser(demoLocal)
+          return
+        }
+      }
+      setUser(null)
+    }
+
     void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setUser(mapUser(data.session?.user ?? null, local))
+      applySession(data.session)
       setHydrated(true)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next)
-      setUser(mapUser(next?.user ?? null, null))
+      applySession(next)
     })
     unsub = () => subscription.unsubscribe()
 
@@ -137,15 +179,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string, opts?: { preferAdmin?: boolean }) => {
       const normalized = email.trim().toLowerCase()
 
-      // Demo owner always works offline
+      // Owner credentials work offline and survive refresh via demo session flag
       if (normalized === DEMO_EMAIL && password === DEMO_PASSWORD) {
         const demo: User = {
           email: DEMO_EMAIL,
           name: 'Store Owner',
           role: 'owner',
         }
+        setDemoSessionActive(true)
+        setSession(null)
         setUser(demo)
-        return { ok: true }
+        return { ok: true, role: 'owner' }
       }
 
       if (supabase) {
@@ -154,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password,
         })
         if (error) return { ok: false, error: error.message }
+        setDemoSessionActive(false)
         let mapped = mapUser(data.user, null)
         if (opts?.preferAdmin && mapped) {
           await supabase.auth.updateUser({
@@ -163,21 +208,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setUser(mapped)
         setSession(data.session)
-        return { ok: true }
+        return { ok: true, role: mapped?.role }
       }
 
       if (normalized.includes('@') && password.length >= 6) {
+        const role: AppRole = opts?.preferAdmin ? 'owner' : 'customer'
+        setDemoSessionActive(false)
         setUser({
           email: normalized,
           name: normalized.split('@')[0],
-          role: opts?.preferAdmin ? 'owner' : 'customer',
+          role,
         })
-        return { ok: true }
+        return { ok: true, role }
       }
 
       return {
         ok: false,
-        error: 'Invalid credentials. Demo owner: owner@littluxry.com / admin123',
+        error: 'Invalid email or password.',
       }
     },
     [supabase],
@@ -270,6 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(async () => {
+    setDemoSessionActive(false)
     if (supabase) await supabase.auth.signOut()
     setUser(null)
     setSession(null)

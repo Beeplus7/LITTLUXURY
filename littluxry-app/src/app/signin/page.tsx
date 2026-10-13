@@ -6,9 +6,10 @@ import { Suspense, useState, type FormEvent } from 'react'
 import { GoogleAuthButton } from '@/components/GoogleAuthButton'
 import { SettingsTabs } from '@/components/SettingsTabs'
 import { VideoHero } from '@/components/VideoHero'
-import { DEMO_CREDENTIALS, useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
+import { Shield } from 'lucide-react'
 
 type Mode = 'signin' | 'forgot' | 'settings'
 
@@ -51,11 +52,11 @@ function SignInInner() {
       return
     }
     toast('Welcome back')
-    if (email.toLowerCase() === DEMO_CREDENTIALS.email) {
+    if (res.role === 'owner') {
       router.push('/dashboard')
-    } else {
-      setMode('settings')
+      return
     }
+    setMode('settings')
   }
 
   if (mode === 'settings' && isLoggedIn) {
@@ -189,11 +190,24 @@ function SignInInner() {
             <Link href="/signup" className="text-[#D4AF37]">
               Sign up wizard
             </Link>
-            {' · '}
-            <Link href="/admin/signin" className="text-[#D4AF37]">
-              Admin
-            </Link>
           </p>
+
+          <Link
+            href="/admin/signin"
+            className="mt-8 flex items-center gap-3 rounded-2xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 p-4 transition hover:border-[#D4AF37]/60 hover:bg-[#D4AF37]/15"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#D4AF37] text-black">
+              <Shield size={18} />
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#D4AF37]">
+                Admin only
+              </span>
+              <span className="mt-0.5 block text-[12px] text-[#b8b0a4]">
+                Protected console for store owners — not for customers
+              </span>
+            </span>
+          </Link>
         </div>
       </div>
     </div>
