@@ -189,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDemoSessionActive(true)
         setSession(null)
         setUser(demo)
-        return { ok: true, role: 'owner' }
+        return { ok: true, role: 'owner' as AppRole }
       }
 
       if (supabase) {
