@@ -34,6 +34,9 @@ import { cn } from '@/lib/cn'
 
 type EditorMode = 'create' | 'edit'
 
+/** Max gallery images per product (library + uploads). */
+const MAX_PRODUCT_IMAGES = 24
+
 type DraftVariant = {
   key: string
   color: string
@@ -172,7 +175,7 @@ function ProductEditorModal({
       ...f,
       images: [...f.images, ...urls]
         .filter((v, i, a) => a.indexOf(v) === i)
-        .slice(0, 16),
+        .slice(0, MAX_PRODUCT_IMAGES),
     }))
   }
 
@@ -195,7 +198,7 @@ function ProductEditorModal({
       name: f.name || labelHint,
       images: [...f.images, ...images]
         .filter((v, i, a) => a.indexOf(v) === i)
-        .slice(0, 16),
+        .slice(0, MAX_PRODUCT_IMAGES),
       video: video ?? f.video,
     }))
     setLibraryOpen(false)
@@ -212,8 +215,13 @@ function ProductEditorModal({
     if (!files?.length) return
     setUploading(true)
     try {
+      const room = Math.max(0, MAX_PRODUCT_IMAGES - form.images.length)
+      if (!room) {
+        toast(`Image limit reached (${MAX_PRODUCT_IMAGES})`)
+        return
+      }
       const loaded: string[] = []
-      for (const file of Array.from(files).slice(0, 8)) {
+      for (const file of Array.from(files).slice(0, room)) {
         loaded.push(await readImageAsDataUrl(file))
       }
       addImages(loaded)

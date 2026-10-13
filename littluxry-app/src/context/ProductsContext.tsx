@@ -91,7 +91,7 @@ function stripHeavyMedia(products: Product[]): Product[] {
   return products.map((p) => {
     const images = (p.images ?? [])
       .filter((src) => !isDataUrl(src))
-      .slice(0, 16)
+      .slice(0, 24)
     return {
       ...p,
       images: images.length ? images : [PLACEHOLDER_IMAGE],
