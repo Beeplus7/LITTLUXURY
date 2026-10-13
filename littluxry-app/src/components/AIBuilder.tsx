@@ -1,10 +1,24 @@
 'use client'
 
-import { useState } from 'react'
-import { Sparkles, Send } from 'lucide-react'
+import { useRef, useState } from 'react'
+import {
+  Sparkles,
+  Send,
+  Link2,
+  ImagePlus,
+  Loader2,
+  Trash2,
+  PackagePlus,
+} from 'lucide-react'
 import { useProducts } from '@/context/ProductsContext'
 import { useToast } from '@/lib/toast'
 import type { ProductVariant } from '@/data/products'
+import {
+  productFromExtract,
+  type ExtractedProduct,
+} from '@/lib/extractProduct'
+import { readImageAsDataUrl } from '@/lib/readImageFile'
+import { cn } from '@/lib/cn'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
 
@@ -23,22 +37,52 @@ const COLOR_MAP: Record<string, string> = {
   rosso: '#c1272d',
 }
 
+type Draft = {
+  title: string
+  description: string
+  price: number
+  sourceUrl?: string
+  images: string[]
+  brand?: string | null
+}
+
+function emptyDraft(): Draft {
+  return { title: '', description: '', price: 198, images: [] }
+}
+
 export function AIBuilder({ productId }: { productId?: string }) {
-  const { products, addVariant, getProduct } = useProducts()
+  const { products, addVariant, getProduct, addProduct, updateProduct } =
+    useProducts()
   const { toast } = useToast()
+  const fileRef = useRef<HTMLInputElement>(null)
   const [input, setInput] = useState('')
+  const [link, setLink] = useState('')
+  const [extracting, setExtracting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [draft, setDraft] = useState<Draft | null>(null)
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      text: 'AI Shop Builder ready. Try: “Create beige variant” or “Add emerald green variant”.',
+      text: 'AI Shop Builder ready. Upload images, paste a product URL to extract, or ask for a color variant.',
     },
   ])
+
+  function push(role: Msg['role'], text: string) {
+    setMessages((m) => [...m, { role, text }])
+  }
 
   function handlePrompt(raw: string) {
     const prompt = raw.trim()
     if (!prompt) return
-    setMessages((m) => [...m, { role: 'user', text: prompt }])
+    push('user', prompt)
     setInput('')
+
+    // URL pasted into chat → extract
+    if (/^https?:\/\//i.test(prompt)) {
+      setLink(prompt)
+      void extractFromUrl(prompt)
+      return
+    }
 
     const lower = prompt.toLowerCase()
     const colorKey = Object.keys(COLOR_MAP).find((k) => lower.includes(k))
@@ -48,13 +92,10 @@ export function AIBuilder({ productId }: { productId?: string }) {
       products[0]?.id
 
     if (!targetId || !colorKey) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'assistant',
-          text: 'I can create color variants. Mention a color like beige, emerald, blush, or noir.',
-        },
-      ])
+      push(
+        'assistant',
+        'I can create color variants, extract a product URL, or use uploaded images. Mention a color (beige, emerald…) or paste a link.',
+      )
       return
     }
 
@@ -70,35 +111,328 @@ export function AIBuilder({ productId }: { productId?: string }) {
       price: product.price,
       stock: 10,
       sku: `LL-AI-${colorKey.slice(0, 3).toUpperCase()}`,
+      image: draft?.images[0] ?? product.images[0],
     }
 
     addVariant(product.id, variant)
-
-    const reply = `Created ${colorName} variant for ${product.menuLabel} — $${variant.price}, SKU ${variant.sku}. It’s live in Products.`
-    setMessages((m) => [...m, { role: 'assistant', text: reply }])
+    push(
+      'assistant',
+      `Created ${colorName} variant for ${product.menuLabel} — $${variant.price}, SKU ${variant.sku}.`,
+    )
     toast(`${colorName} variant added`)
   }
 
+  async function extractFromUrl(urlOverride?: string) {
+    const url = (urlOverride ?? link).trim()
+    if (!url) {
+      toast('Paste a product URL first')
+      return
+    }
+    setExtracting(true)
+    push('user', `Extract ${url}`)
+    try {
+      const res = await fetch('/api/extract-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        product?: ExtractedProduct
+        error?: string
+      }
+      if (!res.ok || !data.product) {
+        throw new Error(data.error || 'Extract failed')
+      }
+      const p = data.product
+      setDraft((prev) => ({
+        title: p.title,
+        description: p.description,
+        price: p.price && p.price > 0 ? Math.round(p.price) : 198,
+        sourceUrl: p.url,
+        brand: p.brand,
+        images: [
+          ...(prev?.images ?? []),
+          ...p.images,
+          ...(p.image ? [p.image] : []),
+        ].filter((v, i, a) => a.indexOf(v) === i),
+      }))
+      push(
+        'assistant',
+        `Extracted “${p.title}”${p.price ? ` · $${Math.round(p.price)}` : ''}${
+          p.image ? ' · image found' : ''
+        }. Review the draft below, then Publish to catalog.`,
+      )
+      toast('Product details extracted')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Extract failed'
+      push('assistant', `Couldn’t extract that link: ${msg}`)
+      toast(msg)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  async function onUploadFiles(files: FileList | null) {
+    if (!files?.length) return
+    setUploading(true)
+    try {
+      const loaded: string[] = []
+      for (const file of Array.from(files).slice(0, 6)) {
+        loaded.push(await readImageAsDataUrl(file))
+      }
+      setDraft((prev) => {
+        const base = prev ?? emptyDraft()
+        return {
+          ...base,
+          title: base.title || fileTitle(files[0]!),
+          images: [...base.images, ...loaded].slice(0, 12),
+        }
+      })
+      push(
+        'assistant',
+        `Uploaded ${loaded.length} image${loaded.length === 1 ? '' : 's'}. Add a title/price or extract a URL, then Publish.`,
+      )
+      toast(`${loaded.length} image${loaded.length === 1 ? '' : 's'} added`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Upload failed'
+      toast(msg)
+      push('assistant', msg)
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  function publishDraft() {
+    if (!draft) return
+    if (!draft.title.trim()) {
+      toast('Add a product title')
+      return
+    }
+    if (!draft.images.length) {
+      toast('Add at least one image (upload or extract)')
+      return
+    }
+
+    const extracted: ExtractedProduct = {
+      url: draft.sourceUrl || 'https://litt-luxury.com',
+      title: draft.title.trim(),
+      description: draft.description.trim(),
+      image: draft.images[0] ?? null,
+      images: draft.images,
+      price: draft.price,
+      currency: 'USD',
+      brand: draft.brand ?? null,
+    }
+    const product = productFromExtract(extracted, {
+      localImages: draft.images,
+    })
+    addProduct(product)
+    push(
+      'assistant',
+      `Published “${product.name}” to the catalog ($${product.price}). It’s live in Shop and Products.`,
+    )
+    toast('Product published')
+    setDraft(null)
+    setLink('')
+  }
+
+  function attachImagesToSelected() {
+    if (!draft?.images.length) {
+      toast('Upload or extract images first')
+      return
+    }
+    const targetId =
+      productId ??
+      products.find((p) => p.category === 'fringe')?.id ??
+      products[0]?.id
+    if (!targetId) return
+    const product = getProduct(targetId)
+    if (!product) return
+    const images = [...draft.images, ...product.images].filter(
+      (v, i, a) => a.indexOf(v) === i,
+    )
+    updateProduct(targetId, { images })
+    push(
+      'assistant',
+      `Attached ${draft.images.length} image(s) to ${product.menuLabel}.`,
+    )
+    toast('Images attached to product')
+  }
+
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-zinc-950">
+    <div className="flex h-full min-h-[560px] flex-col rounded-2xl border border-white/10 bg-zinc-950">
       <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
         <Sparkles size={16} className="text-[#D4AF37]" />
         <h3 className="text-sm font-semibold">AI Shop Builder</h3>
       </div>
+
+      <div className="space-y-3 border-b border-white/10 p-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Link2
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#b8b0a4]"
+            />
+            <input
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="Paste product URL (ASOS, Farfetch, Zara…)"
+              className="w-full rounded-full border border-white/10 bg-black py-2 pl-9 pr-3 text-sm outline-none focus:border-[#D4AF37]/50"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={extracting}
+            onClick={() => void extractFromUrl()}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37] disabled:opacity-50"
+          >
+            {extracting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <PackagePlus size={14} />
+            )}
+            Extract
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => void onUploadFiles(e.target.files)}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <ImagePlus size={14} />
+            )}
+            Upload images
+          </button>
+          {draft?.images.length ? (
+            <button
+              type="button"
+              onClick={attachImagesToSelected}
+              className="rounded-full border border-white/15 px-3 py-2 text-[11px] uppercase tracking-wider text-[#b8b0a4]"
+            >
+              Attach to current product
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {draft ? (
+        <div className="border-b border-white/10 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
+              Draft product
+            </p>
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="text-[#b8b0a4] hover:text-white"
+              aria-label="Clear draft"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[96px_1fr]">
+            <div className="flex flex-wrap gap-1 sm:flex-col">
+              {draft.images.slice(0, 4).map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={src}
+                  alt=""
+                  className="h-16 w-16 rounded-lg object-cover ring-1 ring-white/10"
+                />
+              ))}
+              {!draft.images.length ? (
+                <div className="grid h-16 w-16 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4]">
+                  No img
+                </div>
+              ) : null}
+            </div>
+            <div className="grid gap-2">
+              <input
+                value={draft.title}
+                onChange={(e) =>
+                  setDraft((d) => (d ? { ...d, title: e.target.value } : d))
+                }
+                placeholder="Product title"
+                className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+              <textarea
+                value={draft.description}
+                onChange={(e) =>
+                  setDraft((d) =>
+                    d ? { ...d, description: e.target.value } : d,
+                  )
+                }
+                rows={2}
+                placeholder="Description"
+                className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-[12px] text-[#b8b0a4]">
+                  $
+                  <input
+                    type="number"
+                    value={draft.price}
+                    onChange={(e) =>
+                      setDraft((d) =>
+                        d
+                          ? { ...d, price: Number(e.target.value) || 0 }
+                          : d,
+                      )
+                    }
+                    className="w-24 rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm text-white"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={publishDraft}
+                  className="rounded-full bg-[#D4AF37] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-black"
+                >
+                  Publish to catalog
+                </button>
+              </div>
+              {draft.sourceUrl ? (
+                <p className="truncate text-[11px] text-[#6a655c]">
+                  Source: {draft.sourceUrl}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex-1 space-y-3 overflow-y-auto p-4 text-sm">
         {messages.map((m, i) => (
           <div
             key={i}
-            className={
+            className={cn(
+              'rounded-2xl px-3 py-2',
               m.role === 'user'
-                ? 'ml-8 rounded-2xl bg-[#D4AF37]/15 px-3 py-2 text-[#f5f0e8]'
-                : 'mr-8 rounded-2xl bg-zinc-900 px-3 py-2 text-[#b8b0a4]'
-            }
+                ? 'ml-8 bg-[#D4AF37]/15 text-[#f5f0e8]'
+                : 'mr-8 bg-zinc-900 text-[#b8b0a4]',
+            )}
           >
             {m.text}
           </div>
         ))}
       </div>
+
       <form
         className="flex gap-2 border-t border-white/10 p-3"
         onSubmit={(e) => {
@@ -109,7 +443,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder='e.g. "Add emerald green variant"'
+          placeholder='URL, or “Add emerald green variant”'
           className="flex-1 rounded-full border border-white/10 bg-black px-4 py-2 text-sm outline-none focus:border-[#D4AF37]/50"
         />
         <button
@@ -121,4 +455,8 @@ export function AIBuilder({ productId }: { productId?: string }) {
       </form>
     </div>
   )
+}
+
+function fileTitle(file: File) {
+  return file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim()
 }
