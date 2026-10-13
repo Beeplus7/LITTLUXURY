@@ -7,6 +7,7 @@ import { ChevronDown, Minus, Plus, Star } from 'lucide-react'
 import { Reviews } from '@/components/Reviews'
 import { Footer } from '@/components/Footer'
 import { ProductMedia } from '@/components/ProductMedia'
+import { ProductShareButtons } from '@/components/ProductShareButtons'
 import { useProducts } from '@/context/ProductsContext'
 import { useCart } from '@/context/CartContext'
 import { useUI } from '@/context/UIContext'
@@ -363,6 +364,8 @@ export default function ProductPage() {
               </li>
             ))}
           </ul>
+
+          <ProductShareButtons productName={product.name} />
 
           <button
             type="button"
