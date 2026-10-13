@@ -4,13 +4,14 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Minus, Plus, Star } from 'lucide-react'
-import { VideoHero } from '@/components/VideoHero'
 import { Reviews } from '@/components/Reviews'
 import { Footer } from '@/components/Footer'
+import { ProductMedia } from '@/components/ProductMedia'
 import { useProducts } from '@/context/ProductsContext'
 import { useCart } from '@/context/CartContext'
 import { useUI } from '@/context/UIContext'
 import { isPublishedProduct, sizesForShopCategory } from '@/data/products'
+import { isVideoSrc } from '@/lib/localMediaStore'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -46,13 +47,11 @@ export default function ProductPage() {
     const unique = Array.from(new Set(forColor))
     if (unique.length) return unique
 
-    // Variants exist for this color but sizes were never set
     const colorVariants = (product.variants ?? []).filter(
       (v) => v.color === selectedColor.name,
     )
     if (colorVariants.length) return ['OS']
 
-    // No variants for color — fall back to category size chart
     return sizesForShopCategory(product.shopCategory)
   }, [product, selectedColor])
 
@@ -80,6 +79,19 @@ export default function ProductPage() {
     )
   }, [sizeOptions])
 
+  const gallery = useMemo(() => {
+    if (!product) return [] as string[]
+    const items = [...(product.images ?? [])]
+    if (product.video && !items.includes(product.video)) {
+      items.push(product.video)
+    }
+    return items.filter(Boolean)
+  }, [product])
+
+  useEffect(() => {
+    setActiveImage(0)
+  }, [product?.id])
+
   if (!product) {
     return (
       <div className="grid min-h-[60vh] place-items-center px-5 text-center">
@@ -94,14 +106,13 @@ export default function ProductPage() {
     )
   }
 
-  const gallery = (product.images ?? []).filter(
-    (i) => !i.endsWith('.mp4') && !i.startsWith('data:video'),
-  )
   const current = gallery[activeImage] ?? gallery[0]
+  const cartImage =
+    gallery.find((src) => !isVideoSrc(src)) ?? current ?? '/assets/fringe-hero.png'
   const colors = product.colors ?? []
   const features = product.features ?? []
   const displayPrice = selectedVariant?.price ?? product.price
-  const compareAt = product.original > displayPrice ? product.original : product.original
+  const compareAt = product.original
   const inStock = (selectedVariant?.stock ?? 1) > 0
 
   function add(buyNow = false) {
@@ -121,7 +132,7 @@ export default function ProductPage() {
       color: selectedColor.name,
       size: size || 'OS',
       quantity: qty,
-      image: current ?? '/assets/fringe-hero.png',
+      image: cartImage,
     })
     toast(
       `Added ${product.menuLabel} · ${selectedColor.name} · ${size || 'OS'} × ${qty}`,
@@ -140,32 +151,33 @@ export default function ProductPage() {
             )}
           >
             {current ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <ProductMedia
                 src={current}
                 alt={product.name}
-                className="h-full w-full object-cover"
+                className="h-full w-full"
+                autoPlay
               />
             ) : null}
           </div>
-          <div className="mt-3 flex gap-2 overflow-x-auto">
-            {gallery.map((src, i) => (
-              <button
-                key={src + i}
-                type="button"
-                onClick={() => setActiveImage(i)}
-                className={cn(
-                  'h-16 w-14 shrink-0 overflow-hidden rounded-xl border',
-                  i === activeImage
-                    ? 'border-[#D4AF37]'
-                    : 'border-white/10 opacity-70',
-                )}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
+          {gallery.length > 1 ? (
+            <div className="mt-3 flex gap-2 overflow-x-auto">
+              {gallery.map((src, i) => (
+                <button
+                  key={`${src}-${i}`}
+                  type="button"
+                  onClick={() => setActiveImage(i)}
+                  className={cn(
+                    'h-16 w-14 shrink-0 overflow-hidden rounded-xl border',
+                    i === activeImage
+                      ? 'border-[#D4AF37]'
+                      : 'border-white/10 opacity-70',
+                  )}
+                >
+                  <ProductMedia src={src} thumb className="h-full w-full" />
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -374,19 +386,6 @@ export default function ProductPage() {
           ) : null}
         </div>
       </div>
-
-      <section className="mx-auto max-w-6xl px-5 py-10 md:px-10">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-[#D4AF37]">
-          Motion
-        </p>
-        <h2 className="serif mt-2 text-3xl">
-          {product.name} in motion
-        </h2>
-        <VideoHero
-          className="mt-6 aspect-video w-full"
-          src={product.video}
-        />
-      </section>
 
       <Reviews />
 

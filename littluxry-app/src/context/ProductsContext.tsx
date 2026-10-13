@@ -16,6 +16,7 @@ import {
   type Product,
   type ProductVariant,
 } from '@/data/products'
+import { isLocalMediaRef } from '@/lib/localMediaStore'
 
 type ProductsContextValue = {
   products: Product[]
@@ -86,16 +87,21 @@ function isDataUrl(src: string | undefined): boolean {
   return Boolean(src && src.startsWith('data:'))
 }
 
-/** Drop oversized data-URL media so the catalog fits in localStorage. */
+/** Drop oversized data-URL media so the catalog fits in localStorage.
+ *  Keeps library paths and IndexedDB local-media refs. */
 function stripHeavyMedia(products: Product[]): Product[] {
   return products.map((p) => {
     const images = (p.images ?? [])
-      .filter((src) => !isDataUrl(src))
+      .filter((src) => !isDataUrl(src) || isLocalMediaRef(src))
       .slice(0, 24)
+    const video =
+      p.video && (isDataUrl(p.video) && !isLocalMediaRef(p.video))
+        ? undefined
+        : p.video
     return {
       ...p,
       images: images.length ? images : [PLACEHOLDER_IMAGE],
-      video: isDataUrl(p.video) ? undefined : p.video,
+      video,
     }
   })
 }

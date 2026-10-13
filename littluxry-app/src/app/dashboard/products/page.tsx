@@ -29,8 +29,10 @@ import {
 } from '@/data/products'
 import { SHOP_CATEGORIES, type ShopCategoryId } from '@/data/categories'
 import { MediaPickerModal } from '@/components/MediaPickerModal'
+import { ProductMedia } from '@/components/ProductMedia'
 import type { MediaItem } from '@/data/media'
-import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
+import { readImageAsDataUrl } from '@/lib/readImageFile'
+import { isLocalMediaRef, isVideoSrc, saveLocalVideo } from '@/lib/localMediaStore'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -191,25 +193,31 @@ function ProductEditorModal({
 
   function addFromLibrary(items: MediaItem[]) {
     if (!items.length) return
-    const images = items.filter((m) => m.type === 'image').map((m) => m.src)
+    const imageSrcs = items.filter((m) => m.type === 'image').map((m) => m.src)
     const video = items.find((m) => m.type === 'video')?.src
+    const videoSrcs = items.filter((m) => m.type === 'video').map((m) => m.src)
     const labelHint = (items[0]?.label ?? '')
       .replace(/[-_]+/g, ' ')
       .trim()
-    setForm((f) => ({
-      ...f,
-      name: f.name || labelHint,
-      images: [...f.images, ...images]
+    setForm((f) => {
+      const merged = [...f.images, ...imageSrcs, ...videoSrcs]
         .filter((v, i, a) => a.indexOf(v) === i)
-        .slice(0, MAX_PRODUCT_IMAGES),
-      video: video ?? f.video,
-    }))
+        .slice(0, MAX_PRODUCT_IMAGES)
+      return {
+        ...f,
+        name: f.name || labelHint,
+        images: merged,
+        video: video ?? f.video,
+      }
+    })
     setLibraryOpen(false)
     const parts = [
-      images.length
-        ? `${images.length} image${images.length === 1 ? '' : 's'}`
+      imageSrcs.length
+        ? `${imageSrcs.length} image${imageSrcs.length === 1 ? '' : 's'}`
         : null,
-      video ? '1 video' : null,
+      videoSrcs.length
+        ? `${videoSrcs.length} video${videoSrcs.length === 1 ? '' : 's'}`
+        : null,
     ].filter(Boolean)
     toast(`Added ${parts.join(' + ')} from library`)
   }
@@ -247,15 +255,22 @@ function ProductEditorModal({
     if (!file) return
     setUploadingVideo(true)
     try {
-      const dataUrl = await readVideoAsDataUrl(file)
-      setForm((f) => ({
-        ...f,
-        video: dataUrl,
-        name:
-          f.name ||
-          file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
-      }))
-      toast('Video uploaded')
+      // Store in IndexedDB so publish works (data URLs get stripped from localStorage)
+      const ref = await saveLocalVideo(file)
+      setForm((f) => {
+        const images = [...f.images.filter((src) => src !== f.video), ref]
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .slice(0, MAX_PRODUCT_IMAGES)
+        return {
+          ...f,
+          video: ref,
+          images,
+          name:
+            f.name ||
+            file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
+        }
+      })
+      toast('Video uploaded — it will show in the product gallery')
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Video upload failed')
     } finally {
@@ -272,17 +287,26 @@ function ProductEditorModal({
 
     let images = [...form.images]
     let video = form.video
-    const uploadWeight =
-      images.reduce(
-        (n, src) => n + (src.startsWith('data:') ? src.length : 0),
-        0,
-      ) + (video?.startsWith('data:') ? video.length : 0)
 
-    // Keep publish working on mobile: drop oversized data uploads, keep library paths
-    if (uploadWeight > 3_500_000) {
-      images = images.filter((src) => !src.startsWith('data:'))
-      if (video?.startsWith('data:')) video = undefined
-      toast('Large uploads trimmed — use From library for best results')
+    // Drop only huge inline data URLs; keep library paths + IndexedDB local-media refs
+    const heavyData = images.some(
+      (src) => src.startsWith('data:') && !isLocalMediaRef(src) && src.length > 1_200_000,
+    )
+    if (heavyData) {
+      images = images.filter(
+        (src) => !src.startsWith('data:') || isLocalMediaRef(src),
+      )
+      toast('Large inline images trimmed — prefer From library or smaller files')
+    }
+    if (video?.startsWith('data:') && !isLocalMediaRef(video)) {
+      // Legacy data-URL video cannot persist reliably
+      video = undefined
+      toast('Re-upload video with Upload video so it publishes correctly')
+    }
+
+    // Ensure product video also appears in the image gallery container
+    if (video && !images.includes(video)) {
+      images = [...images, video].slice(0, MAX_PRODUCT_IMAGES)
     }
 
     if (!images.length && !video) {
@@ -567,60 +591,48 @@ function ProductEditorModal({
 
           {form.images.length || form.video ? (
             <div className="mt-4 space-y-3">
-              {form.images.length ? (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {form.images.map((src) => (
-                    <div
-                      key={src.slice(0, 64)}
-                      className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(src)}
-                        className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white opacity-90 hover:bg-red-500/80"
-                        aria-label="Remove image"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {form.video ? (
-                <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-                  <video
-                    src={form.video}
-                    controls
-                    playsInline
-                    className="max-h-52 w-full object-contain"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm((f) => {
-                        const next = { ...f }
-                        delete next.video
-                        return next
-                      })
-                    }
-                    className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[10px] uppercase tracking-wider text-white hover:bg-red-500/80"
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {form.images.map((src) => (
+                  <div
+                    key={src.slice(0, 80)}
+                    className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black"
                   >
-                    <Trash2 size={11} />
-                    Remove video
-                  </button>
-                </div>
+                    <ProductMedia src={src} thumb className="h-full w-full" />
+                    {isVideoSrc(src) ? (
+                      <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white">
+                        Video
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeImage(src)
+                        if (form.video === src) {
+                          setForm((f) => {
+                            const next = { ...f }
+                            delete next.video
+                            return next
+                          })
+                        }
+                      }}
+                      className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white opacity-90 hover:bg-red-500/80"
+                      aria-label="Remove media"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {form.video && !form.images.includes(form.video) ? (
+                <p className="text-[11px] text-amber-200/80">
+                  Video attached — save/publish to add it into the gallery.
+                </p>
               ) : null}
             </div>
           ) : (
             <p className="mt-3 text-[12px] text-[#6a655c]">
               No media yet — pick from the library or upload an image/video.
+              Uploaded videos publish to the main product gallery.
             </p>
           )}
 
