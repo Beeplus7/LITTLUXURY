@@ -591,12 +591,15 @@ function ProductEditorModal({
             </p>
           </div>
 
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <p className="mb-2 text-[11px] uppercase tracking-wider text-[#6a655c]">
+            Preset colours
+          </p>
+          <div className="mb-4 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto pr-1">
             {COLOR_SWATCHES.map((c) => (
               <button
                 key={c.name}
                 type="button"
-                title={c.name}
+                title={`${c.name} (${c.hex})`}
                 onClick={() =>
                   setVariantDraft((d) => ({
                     ...d,
@@ -605,37 +608,68 @@ function ProductEditorModal({
                   }))
                 }
                 className={cn(
-                  'h-7 w-7 rounded-full border',
+                  'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px]',
                   variantDraft.color === c.name
-                    ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/40'
-                    : 'border-white/20',
+                    ? 'border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]'
+                    : 'border-white/15 text-[#b8b0a4] hover:border-white/30',
                 )}
-                style={{ background: c.hex }}
-              />
+              >
+                <span
+                  className="h-3.5 w-3.5 shrink-0 rounded-full border border-white/25"
+                  style={{ background: c.hex }}
+                />
+                {c.name}
+              </button>
             ))}
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-6">
-            <label className="text-[11px] text-[#b8b0a4] sm:col-span-2">
-              Color
-              <input
-                value={variantDraft.color}
-                onChange={(e) =>
-                  setVariantDraft((d) => ({ ...d, color: e.target.value }))
-                }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm"
-              />
-            </label>
-            <label className="text-[11px] text-[#b8b0a4]">
-              Hex
-              <input
-                value={variantDraft.hex}
-                onChange={(e) =>
-                  setVariantDraft((d) => ({ ...d, hex: e.target.value }))
-                }
-                className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm"
-              />
-            </label>
+          <div className="mb-3 rounded-xl border border-dashed border-white/15 bg-black/30 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37]">
+              Custom colour
+            </p>
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr]">
+              <label className="text-[11px] text-[#b8b0a4]">
+                Colour name
+                <input
+                  value={variantDraft.color}
+                  onChange={(e) =>
+                    setVariantDraft((d) => ({ ...d, color: e.target.value }))
+                  }
+                  placeholder="e.g. Royal Blue"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="text-[11px] text-[#b8b0a4]">
+                Pick
+                <input
+                  type="color"
+                  value={
+                    /^#[0-9a-fA-F]{6}$/.test(variantDraft.hex)
+                      ? variantDraft.hex
+                      : '#111111'
+                  }
+                  onChange={(e) =>
+                    setVariantDraft((d) => ({ ...d, hex: e.target.value }))
+                  }
+                  className="mt-1 h-9 w-14 cursor-pointer rounded-lg border border-white/10 bg-black p-0.5"
+                  aria-label="Pick custom colour"
+                />
+              </label>
+              <label className="text-[11px] text-[#b8b0a4]">
+                Hex
+                <input
+                  value={variantDraft.hex}
+                  onChange={(e) =>
+                    setVariantDraft((d) => ({ ...d, hex: e.target.value }))
+                  }
+                  placeholder="#2563eb"
+                  className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm font-mono"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
             <label className="text-[11px] text-[#b8b0a4]">
               Size
               <select
