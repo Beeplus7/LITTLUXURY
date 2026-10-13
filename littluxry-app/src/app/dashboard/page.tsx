@@ -46,11 +46,11 @@ export default function DashboardOverview() {
           </p>
         </div>
         <Link
-          href="/dashboard/ai"
+          href="/dashboard/products?new=1"
           className="inline-flex items-center gap-1.5 rounded-full bg-[#D4AF37] px-4 py-2.5 text-[12px] font-semibold text-black transition hover:bg-[#c9a330]"
         >
           <Plus size={14} />
-          Add
+          Add product
         </Link>
       </div>
 

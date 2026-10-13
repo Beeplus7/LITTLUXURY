@@ -21,6 +21,8 @@ type ProductsContextValue = {
   getProduct: (id: string) => Product | undefined
   updateProduct: (id: string, patch: Partial<Product>) => void
   addProduct: (product: Product) => void
+  removeProduct: (id: string) => void
+  duplicateProduct: (id: string) => Product | null
   addVariant: (productId: string, variant: ProductVariant) => void
   setProducts: (products: Product[]) => void
 }
@@ -77,9 +79,34 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       if (prev.some((p) => p.id === product.id)) {
         return prev.map((p) => (p.id === product.id ? product : p))
       }
-      return [...prev, product]
+      return [product, ...prev]
     })
   }, [])
+
+  const removeProduct = useCallback((id: string) => {
+    setProductsState((prev) => prev.filter((p) => p.id !== id))
+  }, [])
+
+  const duplicateProduct = useCallback((id: string): Product | null => {
+    const source = products.find((p) => p.id === id)
+    if (!source) return null
+    const stamp = Date.now().toString(36)
+    const newId = `${source.id}-copy-${stamp}`
+    const created: Product = {
+      ...source,
+      id: newId,
+      slug: `${source.slug}-copy-${stamp}`,
+      name: `${source.name} (Copy)`,
+      menuLabel: `${source.menuLabel} Copy`,
+      variants: source.variants.map((v) => ({
+        ...v,
+        id: `${newId}-${v.id}`,
+        sku: `${v.sku}-C`,
+      })),
+    }
+    setProductsState((prev) => [created, ...prev])
+    return created
+  }, [products])
 
   const addVariant = useCallback((productId: string, variant: ProductVariant) => {
     setProductsState((prev) =>
@@ -112,10 +139,21 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       getProduct,
       updateProduct,
       addProduct,
+      removeProduct,
+      duplicateProduct,
       addVariant,
       setProducts,
     }),
-    [products, getProduct, updateProduct, addProduct, addVariant, setProducts],
+    [
+      products,
+      getProduct,
+      updateProduct,
+      addProduct,
+      removeProduct,
+      duplicateProduct,
+      addVariant,
+      setProducts,
+    ],
   )
 
   return (

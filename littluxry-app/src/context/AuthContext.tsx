@@ -176,7 +176,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, hydrated])
 
   const login = useCallback(
-    async (email: string, password: string, opts?: { preferAdmin?: boolean }) => {
+    async (
+      email: string,
+      password: string,
+      opts?: { preferAdmin?: boolean },
+    ): Promise<{ ok: boolean; error?: string; role?: AppRole }> => {
       const normalized = email.trim().toLowerCase()
 
       // Owner credentials work offline and survive refresh via demo session flag
@@ -189,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDemoSessionActive(true)
         setSession(null)
         setUser(demo)
-        return { ok: true, role: 'owner' as AppRole }
+        return { ok: true, role: 'owner' }
       }
 
       if (supabase) {

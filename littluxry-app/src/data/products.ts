@@ -13,7 +13,54 @@ export type ProductVariant = {
   price: number
   stock: number
   sku: string
+  size?: string
   image?: string
+}
+
+export const APPAREL_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'] as const
+export const FOOTWEAR_SIZES = [
+  '36',
+  '37',
+  '38',
+  '39',
+  '40',
+  '41',
+  '42',
+  '43',
+  '44',
+] as const
+export const ONE_SIZE = ['OS'] as const
+
+export function sizesForShopCategory(shopCategory: ShopCategoryId): string[] {
+  if (shopCategory === 'shoes' || shopCategory === 'sneakers') {
+    return [...FOOTWEAR_SIZES]
+  }
+  if (
+    shopCategory === 'women-dress' ||
+    shopCategory === 'women' ||
+    shopCategory === 'jacket'
+  ) {
+    return [...APPAREL_SIZES]
+  }
+  return [...ONE_SIZE]
+}
+
+export function productLineForShopCategory(
+  shopCategory: ShopCategoryId,
+): ProductLine {
+  if (shopCategory === 'women-bags') return 'tote'
+  if (shopCategory === 'shoes' || shopCategory === 'sneakers') return 'footwear'
+  if (shopCategory === 'accessories') return 'accessory'
+  return 'apparel'
+}
+
+export function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
 }
 
 /** Product line (silhouette family) — used by AI Builder etc. */

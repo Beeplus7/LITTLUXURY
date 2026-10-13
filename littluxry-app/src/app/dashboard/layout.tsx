@@ -208,7 +208,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           Litt Luxury Admin
         </p>
         <Link
-          href="/dashboard/ai"
+          href="/dashboard/products?new=1"
           className="rounded-full bg-[#D4AF37] px-3 py-1.5 text-[11px] font-semibold text-black"
         >
           + Add
