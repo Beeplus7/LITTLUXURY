@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Heart, Play, Plus, Sparkles, Upload } from 'lucide-react'
 import { mediaLibrary, type MediaItem } from '@/data/media'
 import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
+
+type Filter = 'all' | 'yupoo' | 'core'
 
 export default function MediaPage() {
   const { toast } = useToast()
@@ -14,6 +16,18 @@ export default function MediaPage() {
   const [items, setItems] = useState<MediaItem[]>(mediaLibrary)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
+
+  const yupooCount = useMemo(
+    () => items.filter((m) => m.tags?.includes('yupoo')).length,
+    [items],
+  )
+
+  const visible = useMemo(() => {
+    if (filter === 'yupoo') return items.filter((m) => m.tags?.includes('yupoo'))
+    if (filter === 'core') return items.filter((m) => !m.tags?.includes('yupoo'))
+    return items
+  }, [items, filter])
 
   async function ingestFiles(files: FileList | File[] | null) {
     if (!files?.length) return
@@ -52,8 +66,32 @@ export default function MediaPage() {
             Media Library
           </h1>
           <p className="mt-1 text-[13px] text-[#8a8a8a]">
-            Images & video for the shop · from your Shop Admin foundation
+            Shop media · {items.length} assets
+            {yupooCount ? ` · ${yupooCount} Yupoo imports` : ''}
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(
+              [
+                ['all', 'All'],
+                ['yupoo', 'Yupoo imports'],
+                ['core', 'Core'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFilter(id)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-[11px] uppercase tracking-wider',
+                  filter === id
+                    ? 'border-[#D4AF37]/50 bg-[#D4AF37]/15 text-[#D4AF37]'
+                    : 'border-[#2a2a2a] text-[#8a8a8a]',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <input
@@ -84,7 +122,7 @@ export default function MediaPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {items.map((m) => (
+        {visible.map((m) => (
           <article
             key={m.id}
             className="group overflow-hidden rounded-[16px] border border-[#1a1a1a] bg-[#111]"
@@ -110,6 +148,7 @@ export default function MediaPage() {
                 <img
                   src={m.src}
                   alt={m.label}
+                  loading="lazy"
                   className="h-full w-full object-cover transition group-hover:scale-[1.02]"
                 />
               )}

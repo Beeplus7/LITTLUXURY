@@ -52,3 +52,10 @@ _extract/
 littluxry-app/foundations/
 littluxry-app/.next/
 littluxry-app/node_modules/
+
+# Yupoo scrape binaries (synced to VPS via deploy rsync; keep manifest in git)
+littluxry-app/public/assets/imports/**/*.jpg
+littluxry-app/public/assets/imports/**/*.jpeg
+littluxry-app/public/assets/imports/**/*.png
+littluxry-app/public/assets/imports/**/*.webp
+littluxry-app/public/assets/imports/**/*.gif

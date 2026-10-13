@@ -1,3 +1,5 @@
+import yupooImports from '@/data/yupooImports.json'
+
 export type MediaItem = {
   id: string
   type: 'video' | 'image'
@@ -6,7 +8,13 @@ export type MediaItem = {
   tags: string[]
   sizeLabel?: string
   favorite?: boolean
+  sourceUrl?: string
 }
+
+const importedYupoo: MediaItem[] = (yupooImports as MediaItem[]).map((m) => ({
+  ...m,
+  type: m.type === 'video' ? 'video' : 'image',
+}))
 
 export const mediaLibrary: MediaItem[] = [
   {
@@ -66,4 +74,5 @@ export const mediaLibrary: MediaItem[] = [
     tags: ['rosso', 'texture'],
     sizeLabel: '2.4 MB',
   },
+  ...importedYupoo,
 ]

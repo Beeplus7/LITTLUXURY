@@ -64,6 +64,25 @@ else
   echo "WARN: $ENV_FILE missing — Google auth will not work on VPS"
 fi
 
+IMPORTS_DIR="$ROOT/littluxry-app/public/assets/imports"
+if [[ -d "$IMPORTS_DIR" ]] && compgen -G "$IMPORTS_DIR/*/*.*" > /dev/null; then
+  echo "==> Syncing Yupoo/media imports to VPS (gitignored binaries)"
+  ssh_cmd "$VPS" "mkdir -p '$APP_DIR/littluxry-app/public/assets/imports'"
+  # Prefer rsync if available locally + remotely
+  if command -v rsync >/dev/null && [[ -n "${SSHPASS:-}" ]] && command -v sshpass >/dev/null; then
+    sshpass -e rsync -az --delete \
+      -e "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new" \
+      "$IMPORTS_DIR/" "$VPS:$APP_DIR/littluxry-app/public/assets/imports/"
+  elif command -v rsync >/dev/null; then
+    rsync -az --delete -e "ssh -o StrictHostKeyChecking=accept-new" \
+      "$IMPORTS_DIR/" "$VPS:$APP_DIR/littluxry-app/public/assets/imports/"
+  else
+    scp_cmd -r "$IMPORTS_DIR/." "$VPS:$APP_DIR/littluxry-app/public/assets/imports/"
+  fi
+else
+  echo "NOTE: no local imports to sync (run scripts/scrape_yupoo_public.py first)"
+fi
+
 ssh_cmd "$VPS" "export APP_DIR='$APP_DIR' WEB_PORT='$WEB_PORT' PM2_NAME='$PM2_NAME' DOMAIN='$DOMAIN' DOMAIN_WWW='$DOMAIN_WWW'; bash -s" <<'REMOTE'
 set -euo pipefail
 
