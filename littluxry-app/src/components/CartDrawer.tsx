@@ -58,7 +58,7 @@ export function CartDrawer() {
           ) : (
             cartItems.map((item) => (
               <div
-                key={`${item.productId}-${item.color}`}
+                key={`${item.productId}-${item.color}-${item.size || ''}`}
                 className="flex gap-3 rounded-2xl border border-white/10 p-3"
               >
                 <div className="h-20 w-16 overflow-hidden rounded-xl bg-zinc-900">
@@ -73,7 +73,10 @@ export function CartDrawer() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-[12px] text-[#b8b0a4]">{item.color}</p>
+                  <p className="text-[12px] text-[#b8b0a4]">
+                    {item.color}
+                    {item.size ? ` · Size ${item.size}` : ''}
+                  </p>
                   <p className="mt-1 text-[#D4AF37]">${item.price}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <button
@@ -84,6 +87,7 @@ export function CartDrawer() {
                           item.productId,
                           item.color,
                           item.quantity - 1,
+                          item.size,
                         )
                       }
                     >
@@ -98,6 +102,7 @@ export function CartDrawer() {
                           item.productId,
                           item.color,
                           item.quantity + 1,
+                          item.size,
                         )
                       }
                     >
@@ -107,7 +112,11 @@ export function CartDrawer() {
                       type="button"
                       className="ml-auto text-[11px] text-[#b8b0a4] underline"
                       onClick={() =>
-                        removeFromCart(item.productId, item.color)
+                        removeFromCart(
+                          item.productId,
+                          item.color,
+                          item.size,
+                        )
                       }
                     >
                       Remove

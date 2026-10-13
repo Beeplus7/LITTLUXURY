@@ -15,6 +15,7 @@ export type CartItem = {
   name: string
   price: number
   color: string
+  size?: string
   quantity: number
   image?: string
 }
@@ -24,8 +25,13 @@ type CartContextValue = {
   cartCount: number
   total: number
   addToCart: (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => void
-  removeFromCart: (productId: string, color: string) => void
-  updateQuantity: (productId: string, color: string, quantity: number) => void
+  removeFromCart: (productId: string, color: string, size?: string) => void
+  updateQuantity: (
+    productId: string,
+    color: string,
+    quantity: number,
+    size?: string,
+  ) => void
   clearCart: () => void
   isCartOpen: boolean
   setCartOpen: (open: boolean) => void
@@ -33,6 +39,22 @@ type CartContextValue = {
 
 const STORAGE_KEY = 'littluxry_cart'
 const CartContext = createContext<CartContextValue | null>(null)
+
+function lineKey(productId: string, color: string, size?: string) {
+  return `${productId}::${color}::${size || ''}`
+}
+
+function sameLine(
+  item: CartItem,
+  productId: string,
+  color: string,
+  size?: string,
+) {
+  return (
+    lineKey(item.productId, item.color, item.size) ===
+    lineKey(productId, color, size)
+  )
+}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -51,15 +73,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cartItems))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cartItems))
+    } catch {
+      /* ignore quota */
+    }
   }, [cartItems, hydrated])
 
   const addToCart = useCallback(
     (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
       const qty = item.quantity ?? 1
       setCartItems((prev) => {
-        const idx = prev.findIndex(
-          (p) => p.productId === item.productId && p.color === item.color,
+        const idx = prev.findIndex((p) =>
+          sameLine(p, item.productId, item.color, item.size),
         )
         if (idx >= 0) {
           const next = [...prev]
@@ -73,20 +99,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const removeFromCart = useCallback((productId: string, color: string) => {
-    setCartItems((prev) =>
-      prev.filter((p) => !(p.productId === productId && p.color === color)),
-    )
-  }, [])
+  const removeFromCart = useCallback(
+    (productId: string, color: string, size?: string) => {
+      setCartItems((prev) =>
+        prev.filter((p) => !sameLine(p, productId, color, size)),
+      )
+    },
+    [],
+  )
 
   const updateQuantity = useCallback(
-    (productId: string, color: string, quantity: number) => {
+    (productId: string, color: string, quantity: number, size?: string) => {
       setCartItems((prev) =>
         prev
           .map((p) =>
-            p.productId === productId && p.color === color
-              ? { ...p, quantity }
-              : p,
+            sameLine(p, productId, color, size) ? { ...p, quantity } : p,
           )
           .filter((p) => p.quantity > 0),
       )
@@ -100,6 +127,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     () => cartItems.reduce((sum, i) => sum + i.quantity, 0),
     [cartItems],
   )
+
   const total = useMemo(
     () => cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0),
     [cartItems],

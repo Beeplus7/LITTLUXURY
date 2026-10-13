@@ -22,7 +22,7 @@ export default function CartPage() {
           <div className="mt-8 space-y-4">
             {cartItems.map((item) => (
               <div
-                key={`${item.productId}-${item.color}`}
+                key={`${item.productId}-${item.color}-${item.size || ''}`}
                 className="flex gap-4 rounded-2xl border border-white/10 p-4"
               >
                 <div className="h-24 w-20 overflow-hidden rounded-xl bg-zinc-900">
@@ -37,7 +37,10 @@ export default function CartPage() {
                 </div>
                 <div className="flex-1">
                   <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-[#b8b0a4]">{item.color}</p>
+                  <p className="text-sm text-[#b8b0a4]">
+                    {item.color}
+                    {item.size ? ` · Size ${item.size}` : ''}
+                  </p>
                   <p className="mt-1 text-[#D4AF37]">${item.price}</p>
                   <div className="mt-2 flex items-center gap-3 text-sm">
                     <button
@@ -47,6 +50,7 @@ export default function CartPage() {
                           item.productId,
                           item.color,
                           item.quantity - 1,
+                          item.size,
                         )
                       }
                     >
@@ -60,6 +64,7 @@ export default function CartPage() {
                           item.productId,
                           item.color,
                           item.quantity + 1,
+                          item.size,
                         )
                       }
                     >
@@ -69,7 +74,11 @@ export default function CartPage() {
                       type="button"
                       className="ml-auto text-[#b8b0a4] underline"
                       onClick={() =>
-                        removeFromCart(item.productId, item.color)
+                        removeFromCart(
+                          item.productId,
+                          item.color,
+                          item.size,
+                        )
                       }
                     >
                       Remove

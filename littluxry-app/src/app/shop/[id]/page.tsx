@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Minus, Plus, Star } from 'lucide-react'
 import { VideoHero } from '@/components/VideoHero'
 import { Reviews } from '@/components/Reviews'
@@ -10,6 +10,7 @@ import { Footer } from '@/components/Footer'
 import { useProducts } from '@/context/ProductsContext'
 import { useCart } from '@/context/CartContext'
 import { useUI } from '@/context/UIContext'
+import { sizesForShopCategory } from '@/data/products'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -23,6 +24,7 @@ export default function ProductPage() {
 
   const product = getProduct(params.id)
   const [color, setColor] = useState('')
+  const [size, setSize] = useState('')
   const [qty, setQty] = useState(1)
   const [activeImage, setActiveImage] = useState(0)
   const [openDetail, setOpenDetail] = useState(true)
@@ -32,6 +34,49 @@ export default function ProductPage() {
     const list = product.colors ?? []
     return list.find((c) => c.name === color) ?? list[0] ?? null
   }, [product, color])
+
+  const sizeOptions = useMemo(() => {
+    if (!product || !selectedColor) return [] as string[]
+    const forColor = (product.variants ?? [])
+      .filter((v) => v.color === selectedColor.name)
+      .map((v) => (v.size || '').trim())
+      .filter(Boolean)
+    const unique = Array.from(new Set(forColor))
+    if (unique.length) return unique
+
+    // Variants exist for this color but sizes were never set
+    const colorVariants = (product.variants ?? []).filter(
+      (v) => v.color === selectedColor.name,
+    )
+    if (colorVariants.length) return ['OS']
+
+    // No variants for color — fall back to category size chart
+    return sizesForShopCategory(product.shopCategory)
+  }, [product, selectedColor])
+
+  const selectedVariant = useMemo(() => {
+    if (!product || !selectedColor) return null
+    const variants = product.variants ?? []
+    return (
+      variants.find(
+        (v) =>
+          v.color === selectedColor.name &&
+          (v.size || 'OS') === (size || 'OS'),
+      ) ??
+      variants.find((v) => v.color === selectedColor.name) ??
+      null
+    )
+  }, [product, selectedColor, size])
+
+  useEffect(() => {
+    if (!sizeOptions.length) {
+      setSize('')
+      return
+    }
+    setSize((current) =>
+      sizeOptions.includes(current) ? current : sizeOptions[0]!,
+    )
+  }, [sizeOptions])
 
   if (!product) {
     return (
@@ -53,18 +98,32 @@ export default function ProductPage() {
   const current = gallery[activeImage] ?? gallery[0]
   const colors = product.colors ?? []
   const features = product.features ?? []
+  const displayPrice = selectedVariant?.price ?? product.price
+  const compareAt = product.original > displayPrice ? product.original : product.original
+  const inStock = (selectedVariant?.stock ?? 1) > 0
 
   function add(buyNow = false) {
     if (!product || !selectedColor) return
+    if (sizeOptions.length && !size) {
+      toast('Please choose a size')
+      return
+    }
+    if (!inStock) {
+      toast('This size is out of stock')
+      return
+    }
     addToCart({
       productId: product.id,
       name: product.name,
-      price: product.price,
+      price: displayPrice,
       color: selectedColor.name,
+      size: size || 'OS',
       quantity: qty,
       image: current ?? '/assets/fringe-hero.png',
     })
-    toast(`Added ${product.menuLabel} × ${qty}`)
+    toast(
+      `Added ${product.menuLabel} · ${selectedColor.name} · ${size || 'OS'} × ${qty}`,
+    )
     if (buyNow) router.push('/checkout')
   }
 
@@ -119,7 +178,7 @@ export default function ProductPage() {
             <Star size={14} className="text-[#D4AF37]" fill="currentColor" />
             {product.rating} · {product.reviewCount} reviews
             <span className="ml-auto rounded-full border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
-              In stock
+              {inStock ? 'In stock' : 'Sold out'}
             </span>
           </div>
           <h1 className="serif mt-3 text-[34px] leading-[0.95] md:text-[42px]">
@@ -129,13 +188,17 @@ export default function ProductPage() {
             {product.description}
           </p>
           <div className="mt-6 flex items-baseline gap-4">
-            <span className="serif text-[28px]">${product.price}</span>
-            <span className="text-[15px] text-[#b8b0a4] line-through">
-              ${product.original}
-            </span>
-            <span className="rounded-full border border-[#D4AF37]/30 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
-              Save ${product.original - product.price}
-            </span>
+            <span className="serif text-[28px]">${displayPrice}</span>
+            {compareAt > displayPrice ? (
+              <>
+                <span className="text-[15px] text-[#b8b0a4] line-through">
+                  ${compareAt}
+                </span>
+                <span className="rounded-full border border-[#D4AF37]/30 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
+                  Save ${compareAt - displayPrice}
+                </span>
+              </>
+            ) : null}
           </div>
 
           <div className="mt-8">
@@ -146,9 +209,6 @@ export default function ProductPage() {
                   {selectedColor?.label ?? selectedColor?.name}
                 </span>
               </p>
-              <span className="text-[11px] text-[#b8b0a4] underline decoration-dotted">
-                Size guide
-              </span>
             </div>
             <div className="flex flex-wrap gap-3">
               {colors.map((c) => {
@@ -173,6 +233,81 @@ export default function ProductPage() {
             </div>
           </div>
 
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-[#b8b0a4]">
+                Size
+              </p>
+              <span className="text-[11px] text-[#b8b0a4]">
+                {sizeOptions.length} option
+                {sizeOptions.length === 1 ? '' : 's'} for{' '}
+                {selectedColor?.name ?? 'this colour'}
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                aria-label="Choose size"
+                className="w-full appearance-none rounded-xl border border-white/15 bg-black px-4 py-3 pr-10 text-sm text-[#e8e6e1] outline-none focus:border-[#D4AF37]/50"
+              >
+                {sizeOptions.length === 0 ? (
+                  <option value="">No sizes available</option>
+                ) : (
+                  sizeOptions.map((s) => {
+                    const variant = (product.variants ?? []).find(
+                      (v) =>
+                        v.color === selectedColor?.name &&
+                        (v.size || 'OS') === s,
+                    )
+                    const stock = variant?.stock
+                    const label =
+                      stock != null && stock <= 0
+                        ? `${s} — sold out`
+                        : stock != null && stock <= 3
+                          ? `${s} — low stock`
+                          : s
+                    return (
+                      <option key={s} value={s} disabled={stock === 0}>
+                        {label}
+                      </option>
+                    )
+                  })
+                )}
+              </select>
+              <ChevronDown
+                size={16}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#b8b0a4]"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {sizeOptions.map((s) => {
+                const variant = (product.variants ?? []).find(
+                  (v) =>
+                    v.color === selectedColor?.name && (v.size || 'OS') === s,
+                )
+                const soldOut = variant?.stock === 0
+                return (
+                  <button
+                    key={`chip-${s}`}
+                    type="button"
+                    disabled={soldOut}
+                    onClick={() => setSize(s)}
+                    className={cn(
+                      'min-w-[2.75rem] rounded-full border px-3 py-1.5 text-[12px] font-medium transition',
+                      size === s
+                        ? 'border-[#D4AF37] bg-[#D4AF37]/15 text-[#D4AF37]'
+                        : 'border-white/15 text-[#b8b0a4] hover:border-white/30',
+                      soldOut && 'cursor-not-allowed opacity-40 line-through',
+                    )}
+                  >
+                    {s}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="mt-8 flex items-center gap-4">
             <div className="flex items-center gap-3 rounded-full border border-white/15 px-3 py-2">
               <button
@@ -192,14 +327,16 @@ export default function ProductPage() {
             <button
               type="button"
               onClick={() => add(false)}
-              className="flex-1 rounded-full bg-[#D4AF37] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-black transition hover:brightness-110"
+              disabled={!inStock || !size}
+              className="flex-1 rounded-full bg-[#D4AF37] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-black transition hover:brightness-110 disabled:opacity-40"
             >
               Add to cart
             </button>
             <button
               type="button"
               onClick={() => add(true)}
-              className="flex-1 rounded-full border border-[#0070ba] bg-[#0070ba] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white"
+              disabled={!inStock || !size}
+              className="flex-1 rounded-full border border-[#0070ba] bg-[#0070ba] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-40"
             >
               Buy now · PayPal
             </button>
@@ -228,8 +365,9 @@ export default function ProductPage() {
           </button>
           {openDetail ? (
             <p className="pb-4 text-sm leading-relaxed text-[#b8b0a4]">
-              Hand-finished in small batches. Each fringe strand is cut and
-              weighed for swing. Ships in signature LL packaging with dust bag.
+              Hand-finished in small batches. Each piece ships in signature LL
+              packaging. Selected colour: {selectedColor?.name}. Size:{' '}
+              {size || '—'}.
             </p>
           ) : null}
         </div>
@@ -240,9 +378,12 @@ export default function ProductPage() {
           Motion
         </p>
         <h2 className="serif mt-2 text-3xl">
-          Fringe Muse in Motion — 5 Colors
+          {product.name} in motion
         </h2>
-        <VideoHero className="mt-6 aspect-video w-full" />
+        <VideoHero
+          className="mt-6 aspect-video w-full"
+          src={product.video}
+        />
       </section>
 
       <Reviews />
@@ -252,14 +393,16 @@ export default function ProductPage() {
           <button
             type="button"
             onClick={() => add(false)}
-            className="flex-1 rounded-full bg-[#D4AF37] py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-black"
+            disabled={!inStock || !size}
+            className="flex-1 rounded-full bg-[#D4AF37] py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-black disabled:opacity-40"
           >
-            Add to cart · ${product.price}
+            Add to cart · ${displayPrice}
           </button>
           <button
             type="button"
             onClick={() => add(true)}
-            className="rounded-full bg-[#0070ba] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white"
+            disabled={!inStock || !size}
+            className="rounded-full bg-[#0070ba] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white disabled:opacity-40"
           >
             PayPal
           </button>
