@@ -1,8 +1,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+function publicOrigin(request: Request) {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
+  if (env) return env
+
+  const proto = request.headers.get('x-forwarded-proto') ?? 'https'
+  const host =
+    request.headers.get('x-forwarded-host') ??
+    request.headers.get('host') ??
+    new URL(request.url).host
+
+  // Avoid nginx → 127.0.0.1:3020 leaking into redirects
+  if (!host || host.startsWith('localhost') || host.startsWith('127.')) {
+    return 'https://litt-luxury.com'
+  }
+  return `${proto}://${host}`
+}
+
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  const origin = publicOrigin(request)
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
   const roleHint = searchParams.get('role')
