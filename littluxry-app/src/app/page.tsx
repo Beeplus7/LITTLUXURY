@@ -58,7 +58,7 @@ export default function HomePage() {
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-12 md:grid-cols-2 md:px-10 md:py-20">
         <div>
           <p className="text-[11px] uppercase tracking-[0.28em] text-[#D4AF37]">
-            Littluxry atelier
+            Litt Luxury atelier
           </p>
           <h1 className="serif mt-4 text-[42px] leading-[0.95] tracking-[-0.02em] md:text-[64px]">
             TIMELESS STYLE
@@ -161,7 +161,7 @@ export default function HomePage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-10 md:px-10">
-        <h2 className="serif mb-8 text-center text-3xl">Why Littluxry</h2>
+        <h2 className="serif mb-8 text-center text-3xl">Why Litt Luxury</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {[
             ['Italian Leather', 'Sourced pebble calf with hand-cut fringe.'],

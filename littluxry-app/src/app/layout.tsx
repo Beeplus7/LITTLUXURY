@@ -20,13 +20,13 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   title: {
-    default: 'LITTLUXRY — Timeless Style. Unmatched Quality.',
-    template: '%s · LITTLUXRY',
+    default: 'LITT LUXURY — Timeless Style. Unmatched Quality.',
+    template: '%s · LITT LUXURY',
   },
   description:
     'Italian leather fringe hobos, Rosso buckets, and Riviera straw totes. Wear your status.',
   openGraph: {
-    title: 'LITTLUXRY',
+    title: 'LITT LUXURY',
     description: 'Timeless style. Unmatched quality. Wear your status.',
     type: 'website',
   },

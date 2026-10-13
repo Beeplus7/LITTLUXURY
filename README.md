@@ -1,4 +1,4 @@
-# LITTLUXURY / LITTLUXRY
+# LITT LUXURY
 
 Fashion e-commerce — Next.js storefront + admin (`littluxry-app`), Expo mobile scaffold, Supabase credentials.
 

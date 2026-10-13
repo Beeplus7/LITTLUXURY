@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy LITTLUXRY to IONOS VPS without clashing with other projects.
+# Deploy LITT LUXURY to IONOS VPS without clashing with other projects.
 #
 # Isolation:
 #   Dir:   /opt/littluxry
@@ -42,7 +42,7 @@ scp_cmd() {
   fi
 }
 
-echo "==> Deploy LITTLUXRY → $VPS ($APP_DIR · port $WEB_PORT · $DOMAIN / $DOMAIN_WWW)"
+echo "==> Deploy LITT LUXURY → $VPS ($APP_DIR · port $WEB_PORT · $DOMAIN / $DOMAIN_WWW)"
 
 ssh_cmd "$VPS" "export APP_DIR='$APP_DIR' REPO='$REPO' BRANCH='$BRANCH'; bash -s" <<'REMOTE'
 set -euo pipefail

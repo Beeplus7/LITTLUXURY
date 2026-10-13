@@ -1,6 +1,6 @@
-# LITTLUXRY App
+# LITT LUXURY App
 
-Production Next.js 14 (App Router) storefront + admin for LITTLUXRY.
+Production Next.js 14 (App Router) storefront + admin for LITT LUXURY.
 
 ## Run
 

@@ -102,7 +102,7 @@ function SignInInner() {
       <div className="flex items-center px-6 py-12 md:px-12">
         <div className="w-full max-w-md">
           <p className="serif text-center text-3xl tracking-[0.2em]">
-            LITT <span className="text-[#D4AF37]">LUXRY</span>
+            LITT <span className="text-[#D4AF37]">LUXURY</span>
           </p>
 
           <div className="mt-8">

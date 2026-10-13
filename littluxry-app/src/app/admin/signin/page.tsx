@@ -64,7 +64,7 @@ export default function AdminSignInPage() {
           </div>
 
           <p className="serif mt-8 text-center text-3xl tracking-[0.18em]">
-            LITT <span className="text-[#D4AF37]">LUXRY</span>
+            LITT <span className="text-[#D4AF37]">LUXURY</span>
           </p>
           <p className="mt-2 text-center text-[12px] uppercase tracking-[0.18em] text-[#b8b0a4]">
             Admin sign in

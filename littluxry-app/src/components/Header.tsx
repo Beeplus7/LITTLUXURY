@@ -33,7 +33,7 @@ export function Header() {
           LL
         </div>
         <span className="serif text-[18px] font-medium tracking-[0.18em] md:text-[20px]">
-          LITT <span className="text-[#D4AF37]">LUXRY</span>
+          LITT <span className="text-[#D4AF37]">LUXURY</span>
         </span>
       </Link>
 

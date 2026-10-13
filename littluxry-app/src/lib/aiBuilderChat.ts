@@ -115,12 +115,12 @@ export function generateProductCopy(draft: BuilderDraft): {
         ? 'Studio Sneaker'
         : categoryHint === 'bag'
           ? 'Signature Leather Bag'
-          : 'LITTLUXRY Studio Piece')
+          : 'LITT LUXURY Studio Piece')
 
   const description =
     draft.description.trim() ||
     [
-      `A ${categoryHint} selected for the LITTLUXRY shop`,
+      `A ${categoryHint} selected for the LITT LUXURY shop`,
       brand ? `inspired by ${brand}` : null,
       draft.images.length
         ? `with ${draft.images.length} studio/reference image${draft.images.length === 1 ? '' : 's'}`

@@ -6,7 +6,7 @@ export function Footer() {
       <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-4">
         <div className="md:col-span-2">
           <p className="serif text-2xl tracking-[0.18em]">
-            LITT <span className="text-[#D4AF37]">LUXRY</span>
+            LITT <span className="text-[#D4AF37]">LUXURY</span>
           </p>
           <p className="mt-3 max-w-sm text-sm text-[#b8b0a4]">
             Timeless style. Unmatched quality. Wear your status.
@@ -58,7 +58,7 @@ export function Footer() {
         </div>
       </div>
       <p className="mx-auto mt-12 max-w-6xl text-[11px] uppercase tracking-[0.18em] text-[#6a655c]">
-        © {new Date().getFullYear()} LITTLUXRY. All rights reserved.
+        © {new Date().getFullYear()} LITT LUXURY. All rights reserved.
       </p>
     </footer>
   )

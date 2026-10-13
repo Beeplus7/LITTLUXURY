@@ -73,7 +73,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      text: 'Hi — I’m your LITTLUXRY shop builder. Talk to me like a teammate: “pick bags from library”, paste a product URL, “call it Noir Fringe”, “set price to 248”, or “import to shop”.',
+      text: 'Hi — I’m your LITT LUXURY shop builder. Talk to me like a teammate: “pick bags from library”, paste a product URL, “call it Noir Fringe”, “set price to 248”, or “import to shop”.',
     },
   ])
 

@@ -16,14 +16,15 @@ export default function AdminSignUpPage() {
     name: '',
     email: '',
     password: '',
-    invite: 'LITTLUXRY-OWNER',
+    invite: 'LITTLUXURY-OWNER',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (form.invite.trim() !== 'LITTLUXRY-OWNER') {
+    const invite = form.invite.trim()
+    if (invite !== 'LITTLUXURY-OWNER' && invite !== 'LITTLUXRY-OWNER') {
       setError('Invalid owner invite code')
       return
     }
@@ -61,7 +62,8 @@ export default function AdminSignUpPage() {
         <div className="w-full max-w-md">
           <h1 className="serif text-3xl">Admin sign up</h1>
           <p className="mt-2 text-sm text-[#b8b0a4]">
-            Requires invite code <span className="text-[#D4AF37]">LITTLUXRY-OWNER</span>
+            Requires invite code{' '}
+            <span className="text-[#D4AF37]">LITTLUXURY-OWNER</span>
           </p>
 
           <div className="mt-8">

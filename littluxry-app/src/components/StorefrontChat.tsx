@@ -36,7 +36,7 @@ export function StorefrontChat() {
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       role: 'assistant',
-      text: 'Hi — I’m the LITTLUXRY concierge. Ask for products, leave a product request, get order help, or message admin/support.',
+      text: 'Hi — I’m the LITT LUXURY concierge. Ask for products, leave a product request, get order help, or message admin/support.',
     },
   ])
   const endRef = useRef<HTMLDivElement>(null)
@@ -137,7 +137,7 @@ export function StorefrontChat() {
               </span>
               <div>
                 <p className="text-sm font-semibold text-[#f5f0e8]">
-                  LITTLUXRY Concierge
+                  LITT LUXURY Concierge
                 </p>
                 <p className="text-[10px] uppercase tracking-[0.14em] text-[#6a655c]">
                   Products · Orders · Support

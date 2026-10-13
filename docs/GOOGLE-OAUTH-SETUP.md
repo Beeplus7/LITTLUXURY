@@ -18,7 +18,7 @@ Delete empty URI rows that show red “Invalid / Duplicate” errors. Only add t
 |---|-----|
 | 1 | `https://ungfnedvfrdxhhfgiovn.supabase.co/auth/v1/callback` |
 
-That Supabase callback is required for Google → Supabase → LITTLUXRY.
+That Supabase callback is required for Google → Supabase → LITT LUXURY.
 
 ## After Create
 1. Copy **Client ID** and **Client secret**.
@@ -50,5 +50,5 @@ The Client **secret** is wrong or rotated. Fix:
 
 ## App routes
 - Customer: `/signup` wizard · `/signin`
-- Admin: `/admin/signin` · `/admin/signup` (invite `LITTLUXRY-OWNER`)
+- Admin: `/admin/signin` · `/admin/signup` (invite `LITTLUXURY-OWNER`)
 - OAuth return: `/auth/callback`

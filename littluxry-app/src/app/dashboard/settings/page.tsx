@@ -11,7 +11,7 @@ export default function DashboardSettingsPage() {
   function exportProduction() {
     const payload = {
       exportedAt: new Date().toISOString(),
-      brand: 'LITTLUXRY',
+      brand: 'LITT LUXURY',
       products,
     }
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -24,7 +24,7 @@ export default function DashboardSettingsPage() {
     a.click()
     URL.revokeObjectURL(url)
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>LITTLUXRY Export</title></head><body><h1>LITTLUXRY Production Export</h1><pre>${JSON.stringify(products, null, 2)}</pre></body></html>`
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>LITT LUXURY Export</title></head><body><h1>LITT LUXURY Production Export</h1><pre>${JSON.stringify(products, null, 2)}</pre></body></html>`
     const htmlBlob = new Blob([html], { type: 'text/html' })
     const htmlUrl = URL.createObjectURL(htmlBlob)
     const a2 = document.createElement('a')

@@ -178,7 +178,7 @@ export function SettingsTabs() {
             ['Language', 'English'],
             ['Timezone', 'UTC+1'],
             ['Status', 'Open'],
-            ['Domain', 'littluxry.com'],
+            ['Domain', 'litt-luxury.com'],
             ['Logo', 'LL mark'],
           ].map(([label, value]) => (
             <label key={label} className="block text-[12px] text-[#b8b0a4]">

@@ -225,7 +225,7 @@ export function interpretStorefrontMessage(
   if (/^(hi|hello|hey|yo)\b/.test(lower) || /\bhow are you\b/.test(lower)) {
     return {
       reply:
-        'Welcome to LITTLUXRY. I can recommend products, take a product request, help with an order, or pass a message to admin/support.',
+        'Welcome to LITT LUXURY. I can recommend products, take a product request, help with an order, or pass a message to admin/support.',
       actions: [],
       suggestions: suggestionsFor(null),
     }

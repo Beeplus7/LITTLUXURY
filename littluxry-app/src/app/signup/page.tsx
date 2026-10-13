@@ -48,7 +48,7 @@ export default function SignUpWizardPage() {
       return
     }
     setStep(3)
-    toast('Welcome to LITTLUXRY')
+    toast('Welcome to LITT LUXURY')
   }
 
   return (
@@ -69,7 +69,7 @@ export default function SignUpWizardPage() {
           <p className="text-[11px] uppercase tracking-[0.2em] text-[#D4AF37]">
             Customer sign up
           </p>
-          <h1 className="serif mt-2 text-3xl">Join LITTLUXRY</h1>
+          <h1 className="serif mt-2 text-3xl">Join LITT LUXURY</h1>
 
           <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-zinc-900">
             <div

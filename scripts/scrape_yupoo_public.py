@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scrape public Yupoo album / collection pages into LITTLUXRY Media Library assets.
+Scrape public Yupoo album / collection pages into LITT LUXURY Media Library assets.
 
 Personal/reference use on public (no-password) pages only.
 
