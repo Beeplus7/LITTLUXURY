@@ -10,7 +10,7 @@ import { cn } from '@/lib/cn'
 export function MobileNav() {
   const pathname = usePathname()
   const { cartCount, setCartOpen } = useCart()
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, user } = useAuth()
 
   if (pathname.startsWith('/dashboard') || pathname.startsWith('/signin')) {
     return null
@@ -22,7 +22,7 @@ export function MobileNav() {
     { href: '/shop', label: 'Search', icon: Search },
     { href: '#cart', label: 'Cart', icon: ShoppingBag },
     {
-      href: isLoggedIn ? '/dashboard' : '/signin',
+      href: isLoggedIn ? (user?.role === 'owner' ? '/dashboard' : '/signin') : '/signup',
       label: 'Account',
       icon: User,
     },

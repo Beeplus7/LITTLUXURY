@@ -34,7 +34,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return
     if (!isLoggedIn || user?.role !== 'owner') {
-      router.replace('/signin')
+      router.replace('/admin/signin')
     }
   }, [hydrated, isLoggedIn, user, router])
 
@@ -49,7 +49,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   if (!isLoggedIn || user?.role !== 'owner') {
     return (
       <div className="grid min-h-[50vh] place-items-center text-[#b8b0a4]">
-        Redirecting to sign in…
+        Redirecting to admin sign in…
       </div>
     )
   }

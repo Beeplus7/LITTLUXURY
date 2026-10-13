@@ -9,7 +9,8 @@ import { useAuth } from '@/context/AuthContext'
 export function Header() {
   const { cartCount, setCartOpen } = useCart()
   const { setMenuOpen } = useUI()
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, user } = useAuth()
+  const userRole = user?.role
 
   return (
     <header className="sticky top-0 z-40 flex h-[68px] items-center justify-between border-b border-white/10 bg-[#0a0a0a]/80 px-5 backdrop-blur-xl md:px-10">
@@ -38,10 +39,20 @@ export function Header() {
 
       <div className="flex items-center gap-3">
         <Link
-          href={isLoggedIn ? '/dashboard' : '/signin'}
+          href={
+            isLoggedIn
+              ? userRole === 'owner'
+                ? '/dashboard'
+                : '/signin'
+              : '/signup'
+          }
           className="hidden text-[11px] uppercase tracking-[0.18em] text-[#b8b0a4] transition hover:text-[#D4AF37] sm:inline"
         >
-          {isLoggedIn ? 'Dashboard' : 'Sign in'}
+          {isLoggedIn
+            ? userRole === 'owner'
+              ? 'Dashboard'
+              : 'Account'
+            : 'Sign up'}
         </Link>
         <button
           type="button"

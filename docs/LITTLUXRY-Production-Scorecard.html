@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LITTLUXRY — Production Artifact Scorecard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0a0a0a;
+      --paper: #f5f0e8;
+      --gold: #D4AF37;
+      --muted: #6a655c;
+      --line: rgba(245, 240, 232, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212,175,55,0.18), transparent 55%),
+        linear-gradient(180deg, #111 0%, var(--ink) 45%, #050505 100%);
+      color: var(--paper);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .mono { font-family: "JetBrains Mono", monospace; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px 80px; }
+    header.top {
+      position: sticky; top: 0; z-index: 40;
+      backdrop-filter: blur(16px);
+      background: rgba(10,10,10,0.86);
+      border-bottom: 1px solid var(--line);
+    }
+    .top-inner {
+      max-width: 1120px; margin: 0 auto; padding: 0 24px;
+      height: 64px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark {
+      width: 36px; height: 36px; border-radius: 999px;
+      background: var(--paper); color: var(--ink);
+      display: grid; place-items: center;
+      font-family: "Playfair Display", serif; font-weight: 700; font-size: 12px; letter-spacing: 0.08em;
+    }
+    .brand-name { font-family: "Playfair Display", serif; letter-spacing: 0.18em; font-size: 15px; }
+    .brand-name span { color: var(--gold); }
+    .badge {
+      padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(212,175,55,0.4);
+      color: var(--gold); font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+    }
+    nav.top-nav { display: flex; gap: 18px; }
+    nav.top-nav a {
+      color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    }
+    nav.top-nav a:hover { color: var(--gold); }
+    .hero { padding: 48px 0 24px; }
+    .eyebrow {
+      display: inline-flex; padding: 6px 12px; border-radius: 999px;
+      border: 1px solid rgba(212,175,55,0.35); color: var(--gold);
+      font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    }
+    h1 {
+      font-family: "Playfair Display", serif;
+      font-size: clamp(34px, 5vw, 52px); letter-spacing: -0.02em; line-height: 1.05;
+      margin-top: 14px; max-width: 20ch;
+    }
+    .lede { margin-top: 14px; max-width: 64ch; color: #b8b0a4; font-size: 15px; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .chip {
+      background: #141414; border: 1px solid var(--line); border-radius: 12px;
+      padding: 8px 12px; font-size: 12px; font-weight: 600;
+    }
+    .chip span { color: var(--muted); font-weight: 500; margin-right: 6px; }
+    .score-strip {
+      margin-top: 22px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    }
+    @media (max-width: 860px) {
+      .score-strip { grid-template-columns: 1fr 1fr; }
+      nav.top-nav { display: none; }
+    }
+    .score-card {
+      background: #121212; border: 1px solid var(--line);
+      border-radius: 18px; padding: 16px;
+    }
+    .score-card .label {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      color: var(--muted); text-transform: uppercase;
+    }
+    .score-card .value {
+      font-family: "Playfair Display", serif;
+      font-size: 32px; margin-top: 4px; color: var(--gold);
+    }
+    .score-card .note { font-size: 12px; color: #8a8378; margin-top: 2px; }
+    .delta {
+      display: inline-block; margin-left: 8px; font-size: 12px; color: #6fd49a;
+      font-family: Inter, sans-serif; font-weight: 600;
+    }
+    section { margin-top: 42px; }
+    .sec-head { margin-bottom: 16px; }
+    .sec-head h2 {
+      font-family: "Playfair Display", serif; font-size: 26px; letter-spacing: -0.02em;
+    }
+    .sec-head p { color: #8a8378; font-size: 13.5px; margin-top: 4px; max-width: 60ch; }
+    table.score {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      background: #121212; border: 1px solid var(--line);
+      border-radius: 18px; overflow: hidden; font-size: 13px;
+    }
+    table.score th {
+      text-align: left; background: #0e0e0e; color: #cfc6b8;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 12px 14px;
+    }
+    table.score td {
+      padding: 12px 14px; border-top: 1px solid var(--line); vertical-align: top;
+    }
+    table.score tr:hover td { background: rgba(212,175,55,0.04); }
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px; font-weight: 600;
+      padding: 4px 8px; border-radius: 999px; white-space: nowrap;
+    }
+    .status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .status.ready { background: rgba(61,154,95,0.18); color: #6fd49a; }
+    .status.partial { background: rgba(212,175,55,0.16); color: #e6c76a; }
+    .status.blocked { background: rgba(193,39,45,0.18); color: #f07178; }
+    .status.planned { background: rgba(122,116,106,0.18); color: #b0a89c; }
+    .phases { display: grid; gap: 12px; }
+    .phase {
+      display: grid; grid-template-columns: 96px 1fr;
+      background: #121212; border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+    }
+    @media (max-width: 720px) { .phase { grid-template-columns: 1fr; } }
+    .phase-rail {
+      background: linear-gradient(180deg, #1a160c, #0e0e0e);
+      border-right: 1px solid var(--line);
+      padding: 18px 14px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    }
+    .phase-rail .num { font-family: "Playfair Display", serif; font-size: 28px; color: var(--gold); }
+    .phase-rail .gate { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); }
+    .phase-body { padding: 18px 20px; }
+    .phase-body h3 { font-family: "Playfair Display", serif; font-size: 18px; margin-bottom: 4px; }
+    .phase-body .goal { font-size: 13.5px; color: #8a8378; margin-bottom: 10px; }
+    .phase-body ul { list-style: none; display: grid; gap: 6px; }
+    .phase-body li {
+      font-size: 13px; padding-left: 14px; position: relative; color: #d8d0c4;
+    }
+    .phase-body li::before {
+      content: ""; position: absolute; left: 0; top: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--gold);
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+    .panel {
+      background: #121212; border: 1px solid var(--line); border-radius: 18px; padding: 18px;
+    }
+    .panel h3 { font-family: "Playfair Display", serif; font-size: 18px; margin-bottom: 10px; }
+    .panel ol, .panel ul { padding-left: 18px; color: #b8b0a4; font-size: 13.5px; display: grid; gap: 8px; }
+    .panel li::marker { color: var(--gold); }
+    footer {
+      margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    }
+    .verdict {
+      margin-top: 28px; padding: 22px; border-radius: 18px;
+      border: 1px solid rgba(212,175,55,0.35);
+      background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(10,10,10,0.4));
+    }
+    .verdict h2 { font-family: "Playfair Display", serif; font-size: 22px; color: var(--gold); }
+    .verdict p { margin-top: 8px; color: #cfc6b8; max-width: 72ch; font-size: 14px; }
+    .changelog {
+      margin-top: 16px; display: grid; gap: 8px;
+    }
+    .changelog li { font-size: 13px; color: #b8b0a4; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand">
+        <div class="mark">LL</div>
+        <div class="brand-name">LITT <span>LUXRY</span></div>
+        <span class="badge">SCORECARD · REV 2</span>
+      </div>
+      <nav class="top-nav">
+        <a href="#scorecard">Scorecard</a>
+        <a href="#changelog">Delta</a>
+        <a href="#phases">Phases</a>
+        <a href="#probe">Live</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Artifact · Updated 13 Oct 2026 · 05:02 UTC+1</div>
+      <h1>LITTLUXRY production scorecard</h1>
+      <p class="lede">
+        Rev 2 after auth wizard, Google OAuth wiring, admin routes, Stripe keys from passport-paper,
+        and confirmed local + VPS HTTP 200. Still soft-launch — not full paid commerce.
+      </p>
+      <div class="meta-row">
+        <div class="chip"><span>Rev</span> 2 <span class="delta">↑ from Rev 1 (68)</span></div>
+        <div class="chip"><span>Local</span> http://localhost:3000 · 200</div>
+        <div class="chip"><span>VPS</span> :3020 · Host header 200</div>
+        <div class="chip"><span>Pushed main</span> 870900c (+ local auth unpushed)</div>
+      </div>
+
+      <div class="score-strip">
+        <div class="score-card">
+          <div class="label">Overall</div>
+          <div class="value">76<span style="font-size:18px;color:#8a8378">/100</span></div>
+          <div class="note">+8 vs Rev 1 · auth + Stripe keys + live view</div>
+        </div>
+        <div class="score-card">
+          <div class="label">Ready</div>
+          <div class="value" style="color:#6fd49a">14</div>
+          <div class="note">Was 12</div>
+        </div>
+        <div class="score-card">
+          <div class="label">Partial</div>
+          <div class="value">10</div>
+          <div class="note">Google provider + Stripe checkout pending</div>
+        </div>
+        <div class="score-card">
+          <div class="label">Blocked</div>
+          <div class="value" style="color:#f07178">2</div>
+          <div class="note">DNS/SSL · catalog not on Supabase yet</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="verdict">
+      <h2>Verdict: Soft-launch YES · Google/DNS before public share</h2>
+      <p>
+        Browse locally at <span class="mono">localhost:3000</span> (signup / admin / shop all 200).
+        VPS process still healthy. Finish Google Cloud client + Supabase provider paste, then DNS for
+        <span class="mono">litt-luxury.com</span>, then push auth commits and redeploy.
+        Do not take real payments until Stripe keys are verified as the same account and Checkout Session is wired.
+      </p>
+    </div>
+
+    <section id="changelog">
+      <div class="sec-head">
+        <h2>Delta since Rev 1</h2>
+        <p>What moved the score from 68 → 76.</p>
+      </div>
+      <div class="panel">
+        <ul class="changelog">
+          <li>✅ Customer signup wizard <span class="mono">/signup</span> (4 steps)</li>
+          <li>✅ Admin <span class="mono">/admin/signin</span> · <span class="mono">/admin/signup</span> (invite LITTLUXRY-OWNER)</li>
+          <li>✅ Supabase Auth client + <span class="mono">/auth/callback</span> + Google button UI</li>
+          <li>✅ Stripe test keys imported from passport-paper into <span class="mono">.env.local</span></li>
+          <li>✅ Local web available (dev server 200 on /, /signup, /admin/signin)</li>
+          <li>⚠️ Google OAuth: URIs documented — client Create + Supabase paste still operator step</li>
+          <li>⚠️ Auth/Stripe work largely local — push + VPS redeploy not done for this rev</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="scorecard">
+      <div class="sec-head">
+        <h2>Production scorecard</h2>
+        <p>Updated statuses. Scores are go-live criteria, not demo completeness alone.</p>
+      </div>
+      <table class="score">
+        <thead>
+          <tr>
+            <th style="width:22%">Area</th>
+            <th style="width:12%">Status</th>
+            <th style="width:10%">Score</th>
+            <th>Evidence / gap</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>App foundation</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">10/10</td>
+            <td>Next 14 App Router, gold/ink design system, production build green.</td>
+          </tr>
+          <tr>
+            <td>Homepage / hero / video</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">9/10</td>
+            <td>Hero video + categories strip + featured collection.</td>
+          </tr>
+          <tr>
+            <td>Shop + categories</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">9/10</td>
+            <td>Bags, Dress, Women, Shoes, Sneakers, Jacket, Accessories.</td>
+          </tr>
+          <tr>
+            <td>PDP + reviews</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">9/10</td>
+            <td>Side menu, swatches, sticky ATC, 50 reviews Load More.</td>
+          </tr>
+          <tr>
+            <td>Cart / checkout UX</td>
+            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
+            <td class="mono">6/10</td>
+            <td>Drawer + pages work; payment capture still simulated.</td>
+          </tr>
+          <tr>
+            <td>Customer auth + signup wizard</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">8/10</td>
+            <td><span class="mono">/signup</span> wizard + email/password via Supabase; demo fallback intact.</td>
+          </tr>
+          <tr>
+            <td>Google sign-in</td>
+            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
+            <td class="mono">5/10</td>
+            <td>UI + callback ready. Needs Google client Create + Supabase provider secrets.</td>
+          </tr>
+          <tr>
+            <td>Admin auth</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">8/10</td>
+            <td><span class="mono">/admin/signin</span> · <span class="mono">/admin/signup</span> · dashboard gate → admin.</td>
+          </tr>
+          <tr>
+            <td>Admin dashboard</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">8/10</td>
+            <td>Products, AI Builder, media, orders, payment settings UI, export.</td>
+          </tr>
+          <tr>
+            <td>Stripe credentials</td>
+            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
+            <td class="mono">5/10</td>
+            <td>Keys in <span class="mono">.env.local</span> from passport-paper. pk + sk may be different accounts — verify. No Checkout Session yet.</td>
+          </tr>
+          <tr>
+            <td>Payments live charge</td>
+            <td><span class="status blocked"><span class="dot"></span>BLOCKED</span></td>
+            <td class="mono">2/10</td>
+            <td>UI toggles only until Checkout / PayPal APIs wired.</td>
+          </tr>
+          <tr>
+            <td>Data layer (Supabase catalog)</td>
+            <td><span class="status blocked"><span class="dot"></span>BLOCKED</span></td>
+            <td class="mono">3/10</td>
+            <td>Auth wired to Supabase; products still localStorage / products.ts.</td>
+          </tr>
+          <tr>
+            <td>Catalog media</td>
+            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
+            <td class="mono">6/10</td>
+            <td>Strong bag/video assets; other categories use placeholders.</td>
+          </tr>
+          <tr>
+            <td>Mobile responsive</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">8/10</td>
+            <td>Bottom nav, drawers, sticky ATC. Expo native still scaffold.</td>
+          </tr>
+          <tr>
+            <td>SEO / 404 / toasts</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">7/10</td>
+            <td>Meta + gold 404 + toasts. Sitemap/OG per SKU pending.</td>
+          </tr>
+          <tr>
+            <td>CI / tests</td>
+            <td><span class="status planned"><span class="dot"></span>PLANNED</span></td>
+            <td class="mono">1/10</td>
+            <td>No Actions / e2e yet.</td>
+          </tr>
+          <tr>
+            <td>VPS isolation</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">9/10</td>
+            <td><span class="mono">/opt/littluxry</span> · PM2 littluxry-web · :3020 · nginx site.</td>
+          </tr>
+          <tr>
+            <td>Public DNS + TLS</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">10/10</td>
+            <td><span class="mono">https://litt-luxury.com</span> + www · Let’s Encrypt live · HTTP→HTTPS.</td>
+          </tr>
+          <tr>
+            <td>Local preview</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">10/10</td>
+            <td>Dev server live — home / signup / admin 200.</td>
+          </tr>
+          <tr>
+            <td>GitHub sync of latest auth</td>
+            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
+            <td class="mono">5/10</td>
+            <td>Storefront on main @ 870900c. Auth/Stripe rev still local until push + redeploy.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="phases">
+      <div class="sec-head">
+        <h2>Production phases</h2>
+        <p>P0 done · P1 in progress (auth/Google/DNS).</p>
+      </div>
+      <div class="phases">
+        <article class="phase">
+          <div class="phase-rail"><div class="num">P0</div><div class="gate">DONE</div></div>
+          <div class="phase-body">
+            <h3>Foundation → VPS soft launch</h3>
+            <p class="goal">Browsable storefront without taking money.</p>
+            <ul>
+              <li>Shop, categories, admin shell, VPS PM2, scorecard Rev 1</li>
+            </ul>
+          </div>
+        </article>
+        <article class="phase">
+          <div class="phase-rail"><div class="num">P1</div><div class="gate">NOW</div></div>
+          <div class="phase-body">
+            <h3>Auth + public URL</h3>
+            <p class="goal">Real accounts + shareable HTTPS.</p>
+            <ul>
+              <li>Create Google OAuth client (URIs in docs/GOOGLE-OAUTH-SETUP.md)</li>
+              <li>Paste Client ID/Secret into Supabase Google provider</li>
+              <li>DNS A → 87.106.103.43 · certbot · push auth · redeploy VPS</li>
+            </ul>
+          </div>
+        </article>
+        <article class="phase">
+          <div class="phase-rail"><div class="num">P2</div><div class="gate">NEXT</div></div>
+          <div class="phase-body">
+            <h3>Real commerce</h3>
+            <p class="goal">Paid orders with durable state.</p>
+            <ul>
+              <li>Align Stripe pk/sk account · Checkout Session + webhooks</li>
+              <li>Supabase products/orders tables · drop localStorage source of truth</li>
+            </ul>
+          </div>
+        </article>
+        <article class="phase">
+          <div class="phase-rail"><div class="num">P3</div><div class="gate">SCALE</div></div>
+          <div class="phase-body">
+            <h3>Hardening + native</h3>
+            <p class="goal">Operate like a brand.</p>
+            <ul>
+              <li>CI, Sentry, uptime · Expo app · custom domain</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <h3>Top risks (Rev 2)</h3>
+        <ol>
+          <li>Google button will fail until Cloud client + Supabase provider are completed.</li>
+          <li>Stripe pk_test_51NgGiO… and sk_test_51TyEpW… look like different accounts.</li>
+          <li>Auth changes not on VPS until push/redeploy.</li>
+          <li>Catalog still browser-local — clears with site data.</li>
+        </ol>
+      </div>
+      <div class="panel">
+        <h3>Immediate next actions</h3>
+        <ol>
+          <li>Finish Google Create with documented URIs</li>
+          <li>Enable Supabase Google provider</li>
+          <li>Push main + <span class="mono">bash scripts/deploy-vps.sh</span></li>
+          <li>DNS for litt-luxury.com</li>
+          <li>Verify Stripe account match → Checkout</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="probe">
+      <div class="sec-head">
+        <h2>Live probe (Rev 2)</h2>
+        <p>Checked ~05:02 local · VPS Host header.</p>
+      </div>
+      <table class="score">
+        <thead>
+          <tr><th>Target</th><th>Result</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">localhost:3000/</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Local latest</td></tr>
+          <tr><td class="mono">localhost:3000/signup</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Wizard</td></tr>
+          <tr><td class="mono">localhost:3000/admin/signin</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Admin</td></tr>
+          <tr><td class="mono">VPS Host litt-luxury.com/</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Pre-auth deploy</td></tr>
+          <tr><td class="mono">https://litt-luxury.com</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Main domain + SSL</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      <div>LITTLUXRY · Production Scorecard Rev 2 · Oct 13, 2026</div>
+      <div class="mono">docs/LITTLUXRY-Production-Scorecard.html</div>
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,33 +1,42 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
-import { VideoHero } from '@/components/VideoHero'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useState, type FormEvent } from 'react'
+import { GoogleAuthButton } from '@/components/GoogleAuthButton'
 import { SettingsTabs } from '@/components/SettingsTabs'
-import { useAuth, DEMO_CREDENTIALS } from '@/context/AuthContext'
+import { VideoHero } from '@/components/VideoHero'
+import { DEMO_CREDENTIALS, useAuth } from '@/context/AuthContext'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
-type Mode = 'signin' | 'create' | 'forgot' | 'settings'
+type Mode = 'signin' | 'forgot' | 'settings'
 
-export default function SignInPage() {
-  const { login, isLoggedIn, logout } = useAuth()
+function SignInInner() {
+  const { login, isLoggedIn, logout, user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
-  const [mode, setMode] = useState<Mode>(isLoggedIn ? 'settings' : 'signin')
-  const [email, setEmail] = useState(DEMO_CREDENTIALS.email)
-  const [password, setPassword] = useState(DEMO_CREDENTIALS.password)
+  const params = useSearchParams()
+  const [mode, setMode] = useState<Mode>(
+    isLoggedIn && user?.role === 'customer' ? 'settings' : 'signin',
+  )
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(params.get('error') ? 'Google auth failed — check provider setup' : '')
+  const [loading, setLoading] = useState(false)
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (mode === 'forgot') {
-      toast('Reset link sent (demo)')
+      toast('Reset link sent (configure Supabase email templates for production)')
       setMode('signin')
       return
     }
-    const res = login(email, password)
+    setLoading(true)
+    setError('')
+    const res = await login(email, password)
+    setLoading(false)
     if (!res.ok) {
       setError(res.error ?? 'Login failed')
       return
@@ -52,8 +61,8 @@ export default function SignInPage() {
           </div>
           <button
             type="button"
-            onClick={() => {
-              logout()
+            onClick={async () => {
+              await logout()
               setMode('signin')
               toast('Signed out')
             }}
@@ -75,7 +84,7 @@ export default function SignInPage() {
         <div className="absolute bottom-10 left-10 right-10">
           <p className="serif text-5xl tracking-[0.18em] text-[#D4AF37]">LL</p>
           <p className="mt-3 text-sm text-[#f5f0e8]/80">
-            Owner dashboard · payments · atelier control
+            Customer sign in · Google or email
           </p>
         </div>
       </div>
@@ -85,33 +94,17 @@ export default function SignInPage() {
           <p className="serif text-center text-3xl tracking-[0.2em]">
             LITT <span className="text-[#D4AF37]">LUXRY</span>
           </p>
-          <div className="mt-8 flex rounded-full border border-white/10 p-1">
-            {(
-              [
-                ['signin', 'Sign in'],
-                ['create', 'Create account'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  setMode(id)
-                  setError('')
-                }}
-                className={cn(
-                  'flex-1 rounded-full py-2.5 text-[12px] uppercase tracking-[0.14em]',
-                  mode === id
-                    ? 'bg-[#D4AF37] text-black'
-                    : 'text-[#b8b0a4]',
-                )}
-              >
-                {label}
-              </button>
-            ))}
+
+          <div className="mt-8">
+            <GoogleAuthButton next="/shop" role="customer" />
           </div>
 
-          <form onSubmit={onSubmit} className="mt-8 space-y-4">
+          <div className="my-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.16em] text-[#6a655c]">
+            <span className="h-px flex-1 bg-white/10" /> or email{' '}
+            <span className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <form onSubmit={onSubmit} className="space-y-4">
             {mode !== 'forgot' ? (
               <>
                 <label className="block text-[12px] text-[#b8b0a4]">
@@ -169,36 +162,45 @@ export default function SignInPage() {
 
             <button
               type="submit"
-              className="w-full rounded-full bg-[#D4AF37] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-black transition hover:brightness-110"
+              disabled={loading}
+              className={cn(
+                'w-full rounded-full bg-[#D4AF37] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-black disabled:opacity-60',
+              )}
             >
-              {mode === 'forgot'
-                ? 'Send reset link'
-                : mode === 'create'
-                  ? 'Create account'
+              {loading
+                ? 'Please wait…'
+                : mode === 'forgot'
+                  ? 'Send reset link'
                   : 'Sign in'}
             </button>
           </form>
 
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            {['Google', 'Apple'].map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => toast(`${p} sign-in (demo)`)}
-                className="rounded-full border border-white/15 py-2.5 text-[12px] uppercase tracking-wider"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-
-          <p className="mt-6 rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/5 p-4 text-[12px] leading-relaxed text-[#b8b0a4]">
-            Demo owner: <span className="text-[#D4AF37]">{DEMO_CREDENTIALS.email}</span>
-            <br />
-            Password: <span className="text-[#D4AF37]">{DEMO_CREDENTIALS.password}</span>
+          <p className="mt-6 text-center text-[12px] text-[#6a655c]">
+            New here?{' '}
+            <Link href="/signup" className="text-[#D4AF37]">
+              Sign up wizard
+            </Link>
+            {' · '}
+            <Link href="/admin/signin" className="text-[#D4AF37]">
+              Admin
+            </Link>
           </p>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[50vh] place-items-center text-[#b8b0a4]">
+          Loading…
+        </div>
+      }
+    >
+      <SignInInner />
+    </Suspense>
   )
 }
