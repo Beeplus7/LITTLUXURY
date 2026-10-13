@@ -75,7 +75,7 @@ if [[ -f .env.local ]]; then
     || echo 'NEXT_PUBLIC_SITE_URL=https://litt-luxury.com' >> .env.local
 fi
 
-npm ci
+npm install --omit=dev=false
 npm run build
 
 cat > "$APP_DIR/ecosystem.config.cjs" <<EOF
