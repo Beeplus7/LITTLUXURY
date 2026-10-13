@@ -45,7 +45,7 @@ function readRemovedIds(): Set<string> {
 }
 
 function writeRemovedIds(ids: Set<string>) {
-  localStorage.setItem(REMOVED_KEY, JSON.stringify([...ids]))
+  localStorage.setItem(REMOVED_KEY, JSON.stringify(Array.from(ids)))
 }
 
 function readStoredProducts(): Product[] | null {
