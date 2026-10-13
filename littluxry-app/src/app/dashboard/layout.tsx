@@ -20,14 +20,17 @@ import {
   Menu,
   X,
   ExternalLink,
+  Inbox,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useSupportMessages } from '@/context/SupportMessagesContext'
 import { cn } from '@/lib/cn'
 
 const NAV = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/products', label: 'Products', icon: Package },
   { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag, badge: '12' },
+  { href: '/dashboard/messages', label: 'Messages', icon: Inbox },
   { href: '/dashboard/inventory', label: 'Inventory', icon: Layers },
   { href: '/dashboard/variants', label: 'Variants Manager', icon: Palette },
   { href: '/dashboard/media', label: 'Media Library', icon: ImageIcon },
@@ -46,6 +49,7 @@ const NAV = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { isLoggedIn, hydrated, user, logout } = useAuth()
+  const { unreadCount } = useSupportMessages()
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -110,6 +114,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             item.href === '/dashboard'
               ? pathname === '/dashboard'
               : pathname.startsWith(item.href)
+          const badge =
+            item.href === '/dashboard/messages' && unreadCount > 0
+              ? String(unreadCount)
+              : item.badge
           return (
             <Link
               key={item.href}
@@ -126,9 +134,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 className={active ? 'text-[#D4AF37]' : 'text-[#6a6a6a]'}
               />
               <span className="flex-1 truncate">{item.label}</span>
-              {item.badge ? (
-                <span className="rounded-full border border-[#2a2a2a] bg-[#1f1f1f] px-2 py-0.5 text-[11px] text-[#9a9a9a]">
-                  {item.badge}
+              {badge ? (
+                <span
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[11px]',
+                    item.href === '/dashboard/messages'
+                      ? 'border-[#D4AF37]/40 bg-[#D4AF37]/15 text-[#D4AF37]'
+                      : 'border-[#2a2a2a] bg-[#1f1f1f] text-[#9a9a9a]',
+                  )}
+                >
+                  {badge}
                 </span>
               ) : null}
               {item.newBadge ? (

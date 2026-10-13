@@ -6,6 +6,7 @@ import { Header } from '@/components/Header'
 import { SideMenu } from '@/components/SideMenu'
 import { CartDrawer } from '@/components/CartDrawer'
 import { MobileNav } from '@/components/MobileNav'
+import { StorefrontChat } from '@/components/StorefrontChat'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -46,6 +47,7 @@ export default function RootLayout({
           <SideMenu />
           <CartDrawer />
           <main className="min-h-screen pb-20 md:pb-0">{children}</main>
+          <StorefrontChat />
           <MobileNav />
         </Providers>
       </body>
