@@ -1,18 +1,27 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import {
-  Check,
-  Facebook,
-  Link2,
-  Share2,
-} from 'lucide-react'
+import { Check, Link2, Share2 } from 'lucide-react'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
 type Props = {
   productName: string
   className?: string
+}
+
+function FacebookIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M22 12.07C22 6.48 17.52 2 11.93 2S1.86 6.48 1.86 12.07c0 5.02 3.66 9.18 8.44 9.93v-7.02H7.9v-2.91h2.4V9.84c0-2.37 1.41-3.68 3.57-3.68 1.03 0 2.12.19 2.12.19v2.33h-1.2c-1.18 0-1.55.73-1.55 1.48v1.78h2.64l-.42 2.91h-2.22V22c4.78-.75 8.44-4.91 8.44-9.93z" />
+    </svg>
+  )
 }
 
 function XIcon({ size = 14 }: { size?: number }) {
@@ -111,7 +120,7 @@ export function ProductShareButtons({ productName, className }: Props) {
       id: 'facebook',
       label: 'Facebook',
       href: `https://www.facebook.com/sharer/sharer.php?u=${share.encodedUrl}`,
-      icon: <Facebook size={14} />,
+      icon: <FacebookIcon size={14} />,
     },
     {
       id: 'x',
