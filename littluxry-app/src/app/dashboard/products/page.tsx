@@ -104,6 +104,8 @@ function ProductEditorModal({
   const [uploading, setUploading] = useState(false)
   const [uploadingVideo, setUploadingVideo] = useState(false)
   const [imageUrlDraft, setImageUrlDraft] = useState('')
+  const [customColourOpen, setCustomColourOpen] = useState(false)
+  const customColourNameRef = useRef<HTMLInputElement>(null)
   const [variantDraft, setVariantDraft] = useState({
     color: 'Black',
     hex: '#111111',
@@ -112,6 +114,10 @@ function ProductEditorModal({
     stock: 10,
     sku: '',
   })
+  const isPresetColour = COLOR_SWATCHES.some(
+    (c) => c.name === variantDraft.color && c.hex === variantDraft.hex,
+  )
+  const customColourActive = customColourOpen || !isPresetColour
 
   const sizeOptions = useMemo(
     () => sizesForShopCategory(form.shopCategory),
@@ -592,7 +598,7 @@ function ProductEditorModal({
           </div>
 
           <p className="mb-2 text-[11px] uppercase tracking-wider text-[#6a655c]">
-            Preset colours
+            Colours
           </p>
           <div className="mb-4 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto pr-1">
             {COLOR_SWATCHES.map((c) => (
@@ -600,16 +606,17 @@ function ProductEditorModal({
                 key={c.name}
                 type="button"
                 title={`${c.name} (${c.hex})`}
-                onClick={() =>
+                onClick={() => {
+                  setCustomColourOpen(false)
                   setVariantDraft((d) => ({
                     ...d,
                     color: c.name,
                     hex: c.hex,
                   }))
-                }
+                }}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px]',
-                  variantDraft.color === c.name
+                  !customColourActive && variantDraft.color === c.name
                     ? 'border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]'
                     : 'border-white/15 text-[#b8b0a4] hover:border-white/30',
                 )}
@@ -621,53 +628,94 @@ function ProductEditorModal({
                 {c.name}
               </button>
             ))}
+            <button
+              type="button"
+              title="Add a custom colour"
+              onClick={() => {
+                setCustomColourOpen(true)
+                setVariantDraft((d) => ({
+                  ...d,
+                  color: isPresetColour ? '' : d.color,
+                  hex: isPresetColour ? '#2563eb' : d.hex,
+                }))
+                requestAnimationFrame(() => {
+                  customColourNameRef.current?.focus()
+                })
+              }}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider',
+                customColourActive
+                  ? 'border-[#D4AF37] bg-[#D4AF37]/15 text-[#D4AF37]'
+                  : 'border-dashed border-[#D4AF37]/50 text-[#D4AF37] hover:bg-[#D4AF37]/10',
+              )}
+            >
+              <span
+                className="grid h-3.5 w-3.5 place-items-center rounded-full border border-current text-[9px] leading-none"
+                aria-hidden
+              >
+                +
+              </span>
+              Custom
+            </button>
           </div>
 
-          <div className="mb-3 rounded-xl border border-dashed border-white/15 bg-black/30 p-3">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37]">
-              Custom colour
-            </p>
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr]">
-              <label className="text-[11px] text-[#b8b0a4]">
-                Colour name
-                <input
-                  value={variantDraft.color}
-                  onChange={(e) =>
-                    setVariantDraft((d) => ({ ...d, color: e.target.value }))
-                  }
-                  placeholder="e.g. Royal Blue"
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="text-[11px] text-[#b8b0a4]">
-                Pick
-                <input
-                  type="color"
-                  value={
-                    /^#[0-9a-fA-F]{6}$/.test(variantDraft.hex)
-                      ? variantDraft.hex
-                      : '#111111'
-                  }
-                  onChange={(e) =>
-                    setVariantDraft((d) => ({ ...d, hex: e.target.value }))
-                  }
-                  className="mt-1 h-9 w-14 cursor-pointer rounded-lg border border-white/10 bg-black p-0.5"
-                  aria-label="Pick custom colour"
-                />
-              </label>
-              <label className="text-[11px] text-[#b8b0a4]">
-                Hex
-                <input
-                  value={variantDraft.hex}
-                  onChange={(e) =>
-                    setVariantDraft((d) => ({ ...d, hex: e.target.value }))
-                  }
-                  placeholder="#2563eb"
-                  className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm font-mono"
-                />
-              </label>
+          {customColourActive ? (
+            <div className="mb-3 rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/5 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37]">
+                Custom colour
+              </p>
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr]">
+                <label className="text-[11px] text-[#b8b0a4]">
+                  Colour name
+                  <input
+                    ref={customColourNameRef}
+                    value={variantDraft.color}
+                    onChange={(e) => {
+                      setCustomColourOpen(true)
+                      setVariantDraft((d) => ({
+                        ...d,
+                        color: e.target.value,
+                      }))
+                    }}
+                    placeholder="e.g. Royal Blue"
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-[11px] text-[#b8b0a4]">
+                  Pick
+                  <input
+                    type="color"
+                    value={
+                      /^#[0-9a-fA-F]{6}$/.test(variantDraft.hex)
+                        ? variantDraft.hex
+                        : '#2563eb'
+                    }
+                    onChange={(e) => {
+                      setCustomColourOpen(true)
+                      setVariantDraft((d) => ({ ...d, hex: e.target.value }))
+                    }}
+                    className="mt-1 h-9 w-14 cursor-pointer rounded-lg border border-white/10 bg-black p-0.5"
+                    aria-label="Pick custom colour"
+                  />
+                </label>
+                <label className="text-[11px] text-[#b8b0a4]">
+                  Hex
+                  <input
+                    value={variantDraft.hex}
+                    onChange={(e) => {
+                      setCustomColourOpen(true)
+                      setVariantDraft((d) => ({
+                        ...d,
+                        hex: e.target.value,
+                      }))
+                    }}
+                    placeholder="#2563eb"
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-black px-2 py-1.5 text-sm font-mono"
+                  />
+                </label>
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="grid gap-2 sm:grid-cols-3">
             <label className="text-[11px] text-[#b8b0a4]">
