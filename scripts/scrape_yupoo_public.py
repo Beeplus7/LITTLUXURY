@@ -9,14 +9,15 @@ Examples:
     --url https://paypalshop.x.yupoo.com/collections/2865378
 
   python3 scripts/scrape_yupoo_public.py \\
-    --url https://soccerjerseys20232024.x.yupoo.com/albums/133050075 \\
-    --slug soccer-133050075
+    --url https://makeawishlove.x.yupoo.com/albums
+
+  python3 scripts/scrape_yupoo_public.py \\
+    --url https://makeawishlove.x.yupoo.com/albums/254205849?uid=1
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import time
@@ -40,6 +41,7 @@ PHOTO_RE_REL = re.compile(
     r"//photo\.yupoo\.com/[^\"'\s<>]+/(?:medium|big|small|original)\.[a-zA-Z0-9]+",
     re.I,
 )
+ALBUM_ID_RE = re.compile(r"/albums/(\d+)")
 
 HEADERS = {
     "User-Agent": (
@@ -62,11 +64,16 @@ def slug_from_url(url: str) -> str:
 
 
 def prefer_big(url: str) -> list[str]:
-    """Try higher quality variants first."""
+    """Try higher quality variants first (incl. square → medium/big)."""
     u = url
     candidates = []
     for a, b in (
+        ("/square.", "/big."),
+        ("/square.", "/medium."),
+        ("/thumb.", "/big."),
+        ("/thumb.", "/medium."),
         ("/small.", "/big."),
+        ("/small.", "/medium."),
         ("/medium.", "/big."),
         ("/big.", "/original."),
     ):
@@ -105,13 +112,13 @@ def extract_from_html(html: str, base: str) -> list[str]:
 
 
 def dedupe_by_photo_id(urls: Iterable[str]) -> list[str]:
-    """Keep one URL per photo path (prefer later/higher quality order from prefer_big)."""
+    """Keep one URL per photo path (prefer higher quality; upgrade square/thumb)."""
     best: dict[str, str] = {}
-    rank = {"original": 3, "big": 2, "medium": 1, "small": 0}
+    rank = {"original": 4, "big": 3, "medium": 2, "small": 1, "square": 0, "thumb": 0}
 
     def key_and_rank(u: str):
         m = re.search(
-            r"(https://photo\.yupoo\.com/.+?)/(small|medium|big|original)\.([a-z0-9]+)",
+            r"(https://photo\.yupoo\.com/.+?)/(square|thumb|small|medium|big|original)\.([a-z0-9]+)",
             u,
             re.I,
         )
@@ -131,39 +138,132 @@ def dedupe_by_photo_id(urls: Iterable[str]) -> list[str]:
     return list(best.values())
 
 
-def fetch_collection_pages(session: requests.Session, url: str, max_pages: int = 8) -> str:
-    """
-    Yupoo collections often paginate via ?page=N.
-    Keep timeouts short and stop when a page adds no new photo URLs.
-    """
-    chunks = []
-    seen: set[str] = set()
-    r = session.get(url, headers=HEADERS, timeout=25)
-    r.raise_for_status()
-    chunks.append(r.text)
-    seen.update(PHOTO_RE.findall(r.text))
-    print(f"  page 1: {len(seen)} photos", flush=True)
+def shop_origin(url: str) -> str:
+    p = urlparse(url)
+    return f"{p.scheme}://{p.netloc}"
 
-    for page in range(2, max_pages + 1):
-        cand = f"{url.rstrip('/')}?page={page}"
+
+def is_albums_index(url: str) -> bool:
+    path = urlparse(url).path.rstrip("/")
+    return path.endswith("/albums") or path == "/albums"
+
+
+def normalize_album_url(url: str) -> str:
+    """Individual albums on many shops need ?uid=1 to render public gallery HTML."""
+    if re.search(r"/albums/\d+", url) and "uid=" not in url:
+        return url + ("&" if "?" in url else "?") + "uid=1"
+    return url
+
+
+def fetch_paginated_html(
+    session: requests.Session,
+    url: str,
+    max_pages: int = 8,
+    *,
+    label: str = "page",
+) -> str:
+    """Fetch ?page=N until no new photo.yupoo.com URLs appear."""
+    chunks: list[str] = []
+    seen: set[str] = set()
+    base = url
+    for page in range(1, max_pages + 1):
+        cand = base if page == 1 else (
+            f"{base}&page={page}" if "?" in base else f"{base}?page={page}"
+        )
         try:
-            resp = session.get(cand, headers=HEADERS, timeout=12)
+            resp = session.get(cand, headers=HEADERS, timeout=20)
         except requests.RequestException as e:
-            print(f"  page {page}: stop ({e})", flush=True)
+            print(f"  {label} {page}: stop ({e})", flush=True)
             break
         if resp.status_code != 200:
-            print(f"  page {page}: HTTP {resp.status_code}, stop", flush=True)
+            print(f"  {label} {page}: HTTP {resp.status_code}, stop", flush=True)
             break
-        imgs = PHOTO_RE.findall(resp.text)
+        imgs = [u for u in PHOTO_RE.findall(resp.text) if "/icons/" not in u]
         new = [u for u in imgs if u not in seen]
-        if not new:
-            print(f"  page {page}: no new photos, stop", flush=True)
+        if page > 1 and not new:
+            print(f"  {label} {page}: no new photos, stop", flush=True)
             break
         seen.update(new)
         chunks.append(resp.text)
-        print(f"  page {page}: +{len(new)} (total {len(seen)})", flush=True)
-        time.sleep(0.25)
+        print(f"  {label} {page}: +{len(new)} (total {len(seen)})", flush=True)
+        time.sleep(0.2)
     return "\n".join(chunks)
+
+
+def discover_album_ids(
+    session: requests.Session,
+    index_url: str,
+    max_pages: int = 12,
+    max_albums: int = 80,
+) -> list[str]:
+    """Collect album IDs from a shop /albums index (paginated)."""
+    origin = shop_origin(index_url)
+    session.get(index_url, headers={**HEADERS, "Referer": origin}, timeout=20)
+    ids: list[str] = []
+    seen: set[str] = set()
+    for page in range(1, max_pages + 1):
+        if len(ids) >= max_albums:
+            break
+        cand = index_url if page == 1 else f"{index_url.rstrip('/')}?page={page}"
+        try:
+            resp = session.get(
+                cand,
+                headers={**HEADERS, "Referer": index_url},
+                timeout=20,
+            )
+        except requests.RequestException as e:
+            print(f"  albums index {page}: stop ({e})", flush=True)
+            break
+        if resp.status_code != 200:
+            print(f"  albums index {page}: HTTP {resp.status_code}, stop", flush=True)
+            break
+        found = ALBUM_ID_RE.findall(resp.text)
+        new = [a for a in found if a not in seen]
+        # Keep order, unique
+        for a in found:
+            if a not in seen:
+                seen.add(a)
+                ids.append(a)
+                if len(ids) >= max_albums:
+                    break
+        print(f"  albums index {page}: +{len(new)} (total {len(ids)})", flush=True)
+        if page > 1 and not new:
+            break
+        time.sleep(0.25)
+    return ids[:max_albums]
+
+
+def fetch_albums_index_photos(
+    session: requests.Session,
+    index_url: str,
+    max_album_pages: int = 6,
+    max_albums: int = 80,
+) -> str:
+    """
+    Crawl /albums listing → each /albums/<id>?uid=1 gallery.
+    Returns concatenated HTML for photo regex extraction.
+    """
+    origin = shop_origin(index_url)
+    album_ids = discover_album_ids(session, index_url, max_albums=max_albums)
+    print(f"  discovered {len(album_ids)} albums", flush=True)
+    chunks: list[str] = []
+    for i, aid in enumerate(album_ids, 1):
+        album_url = normalize_album_url(f"{origin}/albums/{aid}")
+        print(f"  [{i}/{len(album_ids)}] {album_url}", flush=True)
+        html = fetch_paginated_html(
+            session,
+            album_url,
+            max_pages=max_album_pages,
+            label=f"album {aid} page",
+        )
+        if html.strip():
+            chunks.append(html)
+        time.sleep(0.15)
+    return "\n".join(chunks)
+
+
+def fetch_collection_pages(session: requests.Session, url: str, max_pages: int = 8) -> str:
+    return fetch_paginated_html(session, url, max_pages=max_pages, label="collection page")
 
 
 def download_one(session: requests.Session, img_url: str, dest: Path) -> bool:
@@ -211,7 +311,8 @@ def main() -> int:
     ap.add_argument("--url", action="append", required=True, help="Public Yupoo album or collection URL (repeatable)")
     ap.add_argument("--slug", default="", help="Folder slug under public/assets/imports/")
     ap.add_argument("--limit", type=int, default=0, help="Max images per URL (0 = all)")
-    ap.add_argument("--max-pages", type=int, default=40, help="Collection pagination depth")
+    ap.add_argument("--max-pages", type=int, default=8, help="Pagination depth per album/collection")
+    ap.add_argument("--max-albums", type=int, default=80, help="Max albums when scraping /albums index")
     args = ap.parse_args()
 
     session = requests.Session()
@@ -228,12 +329,32 @@ def main() -> int:
         print(f"\n=== Fetching {url}", flush=True)
         print(f"    → {out_dir}", flush=True)
         try:
+            origin = shop_origin(url)
+            session.headers.update({**HEADERS, "Referer": origin + "/"})
             resp0 = session.get(url, headers=HEADERS, timeout=25)
-            if resp0.status_code == 404:
+            if resp0.status_code == 404 and "uid=" not in url and re.search(r"/albums/\d+", url):
+                # retry with uid=1
+                url = normalize_album_url(url)
+                resp0 = session.get(url, headers=HEADERS, timeout=25)
+            if resp0.status_code == 404 and not is_albums_index(url):
                 print(f"FAIL: URL returned 404 (private/removed?): {url}", file=sys.stderr)
                 continue
-            if "/collections/" in url:
+            if is_albums_index(url):
+                html = fetch_albums_index_photos(
+                    session,
+                    url,
+                    max_album_pages=args.max_pages,
+                    max_albums=args.max_albums,
+                )
+            elif "/collections/" in url:
                 html = fetch_collection_pages(session, url, max_pages=args.max_pages)
+            elif re.search(r"/albums/\d+", url):
+                html = fetch_paginated_html(
+                    session,
+                    normalize_album_url(url),
+                    max_pages=args.max_pages,
+                    label="album page",
+                )
             else:
                 html = resp0.text
         except Exception as e:  # noqa: BLE001
