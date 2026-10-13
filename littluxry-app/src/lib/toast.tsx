@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -21,8 +22,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((msg: string) => {
     setMessage(msg)
-    window.setTimeout(() => setMessage(null), 2800)
+    window.setTimeout(() => setMessage(null), 3200)
   }, [])
+
+  useEffect(() => {
+    function onCatalogToast(e: Event) {
+      const detail = (e as CustomEvent<{ message?: string }>).detail
+      if (detail?.message) toast(detail.message)
+    }
+    window.addEventListener('littluxry:toast', onCatalogToast)
+    return () => window.removeEventListener('littluxry:toast', onCatalogToast)
+  }, [toast])
 
   const value = useMemo(() => ({ toast }), [toast])
 

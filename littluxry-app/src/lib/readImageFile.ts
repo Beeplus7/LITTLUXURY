@@ -3,15 +3,15 @@ export async function readImageAsDataUrl(
   file: File,
   opts?: { maxEdge?: number; maxBytes?: number },
 ): Promise<string> {
-  const maxBytes = opts?.maxBytes ?? 4_500_000
+  const maxBytes = opts?.maxBytes ?? 2_500_000
   if (!file.type.startsWith('image/')) {
     throw new Error('Please choose an image file')
   }
   if (file.size > maxBytes) {
-    throw new Error('Image is too large (max ~4.5MB)')
+    throw new Error('Image is too large (max ~2.5MB)')
   }
 
-  const maxEdge = opts?.maxEdge ?? 1600
+  const maxEdge = opts?.maxEdge ?? 1200
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
   const w = Math.max(1, Math.round(bitmap.width * scale))
@@ -49,7 +49,7 @@ export async function readVideoAsDataUrl(
   file: File,
   opts?: { maxBytes?: number },
 ): Promise<string> {
-  const maxBytes = opts?.maxBytes ?? 8_000_000
+  const maxBytes = opts?.maxBytes ?? 4_000_000
   if (!file.type.startsWith('video/') && !VIDEO_TYPES.has(file.type)) {
     throw new Error('Please choose a video file (MP4 or WebM)')
   }
@@ -57,7 +57,7 @@ export async function readVideoAsDataUrl(
     throw new Error('Use MP4 or WebM for best playback')
   }
   if (file.size > maxBytes) {
-    throw new Error('Video is too large (max ~8MB for catalog storage)')
+    throw new Error('Video is too large (max ~4MB for catalog storage)')
   }
 
   const dataUrl = await new Promise<string>((resolve, reject) => {

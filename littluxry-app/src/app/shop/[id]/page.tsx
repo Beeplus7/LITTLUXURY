@@ -29,9 +29,8 @@ export default function ProductPage() {
 
   const selectedColor = useMemo(() => {
     if (!product) return null
-    return (
-      product.colors.find((c) => c.name === color) ?? product.colors[0] ?? null
-    )
+    const list = product.colors ?? []
+    return list.find((c) => c.name === color) ?? list[0] ?? null
   }, [product, color])
 
   if (!product) {
@@ -48,8 +47,12 @@ export default function ProductPage() {
     )
   }
 
-  const gallery = product.images.filter((i) => !i.endsWith('.mp4'))
+  const gallery = (product.images ?? []).filter(
+    (i) => !i.endsWith('.mp4') && !i.startsWith('data:video'),
+  )
   const current = gallery[activeImage] ?? gallery[0]
+  const colors = product.colors ?? []
+  const features = product.features ?? []
 
   function add(buyNow = false) {
     if (!product || !selectedColor) return
@@ -59,7 +62,7 @@ export default function ProductPage() {
       price: product.price,
       color: selectedColor.name,
       quantity: qty,
-      image: current,
+      image: current ?? '/assets/fringe-hero.png',
     })
     toast(`Added ${product.menuLabel} × ${qty}`)
     if (buyNow) router.push('/checkout')
@@ -148,7 +151,7 @@ export default function ProductPage() {
               </span>
             </div>
             <div className="flex flex-wrap gap-3">
-              {product.colors.map((c) => {
+              {colors.map((c) => {
                 const active = (selectedColor?.name ?? '') === c.name
                 return (
                   <button
@@ -158,12 +161,12 @@ export default function ProductPage() {
                     className={cn(
                       'flex h-9 w-9 items-center justify-center rounded-full border-2 transition',
                       active
-                        ? 'border-[#D4AF37] shadow-glow'
+                        ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.35)]'
                         : 'border-white/20',
                     )}
                     style={{ backgroundColor: c.hex }}
-                    title={c.label}
-                    aria-label={c.label}
+                    title={c.label ?? c.name}
+                    aria-label={c.label ?? c.name}
                   />
                 )
               })}
@@ -203,7 +206,7 @@ export default function ProductPage() {
           </div>
 
           <ul className="mt-8 space-y-2 text-sm text-[#b8b0a4]">
-            {product.features.map((f) => (
+            {features.map((f) => (
               <li key={f} className="flex gap-2">
                 <span className="text-[#D4AF37]">✦</span> {f}
               </li>

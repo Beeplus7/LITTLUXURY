@@ -30,6 +30,7 @@ type ProductsContextValue = {
 
 const STORAGE_KEY = 'littluxry_products'
 const REMOVED_KEY = 'littluxry_products_removed'
+const PLACEHOLDER_IMAGE = '/assets/fringe-hero.png'
 const ProductsContext = createContext<ProductsContextValue | null>(null)
 
 function readRemovedIds(): Set<string> {
@@ -45,7 +46,11 @@ function readRemovedIds(): Set<string> {
 }
 
 function writeRemovedIds(ids: Set<string>) {
-  localStorage.setItem(REMOVED_KEY, JSON.stringify(Array.from(ids)))
+  try {
+    localStorage.setItem(REMOVED_KEY, JSON.stringify(Array.from(ids)))
+  } catch {
+    /* ignore quota / private mode */
+  }
 }
 
 function readStoredProducts(): Product[] | null {
@@ -77,21 +82,95 @@ function mergeCatalog(stored: Product[] | null, removed: Set<string>): Product[]
   )
 }
 
+function isDataUrl(src: string | undefined): boolean {
+  return Boolean(src && src.startsWith('data:'))
+}
+
+/** Drop oversized data-URL media so the catalog fits in localStorage. */
+function stripHeavyMedia(products: Product[]): Product[] {
+  return products.map((p) => {
+    const images = (p.images ?? [])
+      .filter((src) => !isDataUrl(src))
+      .slice(0, 16)
+    return {
+      ...p,
+      images: images.length ? images : [PLACEHOLDER_IMAGE],
+      video: isDataUrl(p.video) ? undefined : p.video,
+    }
+  })
+}
+
+function persistProducts(products: Product[]): {
+  ok: boolean
+  stripped: boolean
+} {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(products))
+    return { ok: true, stripped: false }
+  } catch {
+    try {
+      const lite = stripHeavyMedia(products)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lite))
+      return { ok: true, stripped: true }
+    } catch {
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(stripHeavyMedia(products)),
+        )
+        return { ok: true, stripped: true }
+      } catch {
+        return { ok: false, stripped: false }
+      }
+    }
+  }
+}
+
+function notifyPersistIssue(message: string) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent('littluxry:toast', { detail: { message } }),
+  )
+}
+
 export function ProductsProvider({ children }: { children: ReactNode }) {
   const [products, setProductsState] = useState<Product[]>(initialProducts)
   const [hydrated, setHydrated] = useState(false)
   const removedIdsRef = useRef<Set<string>>(new Set())
+  const skipNextPersistRef = useRef(false)
 
   useEffect(() => {
-    const removed = readRemovedIds()
-    removedIdsRef.current = removed
-    setProductsState(mergeCatalog(readStoredProducts(), removed))
+    try {
+      const removed = readRemovedIds()
+      removedIdsRef.current = removed
+      setProductsState(mergeCatalog(readStoredProducts(), removed))
+    } catch {
+      setProductsState(initialProducts)
+    }
     setHydrated(true)
   }, [])
 
   useEffect(() => {
     if (!hydrated) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(products))
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false
+      return
+    }
+    const result = persistProducts(products)
+    if (!result.ok) {
+      notifyPersistIssue(
+        'Could not save catalog on this device (storage full). Try smaller images.',
+      )
+      return
+    }
+    if (result.stripped) {
+      skipNextPersistRef.current = true
+      setProductsState(stripHeavyMedia(products))
+      notifyPersistIssue(
+        'Images were too large for device storage — placeholders used. Prefer Library media.',
+      )
+    }
   }, [products, hydrated])
 
   const getProduct = useCallback(
@@ -106,14 +185,21 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addProduct = useCallback((product: Product) => {
-    removedIdsRef.current.delete(product.id)
-    removedIdsRef.current.delete(product.slug)
+    const safe: Product = {
+      ...product,
+      images: Array.isArray(product.images) ? product.images : [],
+      colors: Array.isArray(product.colors) ? product.colors : [],
+      features: Array.isArray(product.features) ? product.features : [],
+      variants: Array.isArray(product.variants) ? product.variants : [],
+    }
+    removedIdsRef.current.delete(safe.id)
+    removedIdsRef.current.delete(safe.slug)
     writeRemovedIds(removedIdsRef.current)
     setProductsState((prev) => {
-      if (prev.some((p) => p.id === product.id)) {
-        return prev.map((p) => (p.id === product.id ? product : p))
+      if (prev.some((p) => p.id === safe.id)) {
+        return prev.map((p) => (p.id === safe.id ? safe : p))
       }
-      return [product, ...prev]
+      return [safe, ...prev]
     })
   }, [])
 
@@ -131,47 +217,62 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const duplicateProduct = useCallback((id: string): Product | null => {
-    const source = products.find((p) => p.id === id || p.slug === id)
-    if (!source) return null
-    const stamp = Date.now().toString(36)
-    const newId = `${source.id}-copy-${stamp}`
-    const created: Product = {
-      ...source,
-      id: newId,
-      slug: `${source.slug}-copy-${stamp}`,
-      name: `${source.name} (Copy)`,
-      menuLabel: `${source.menuLabel} Copy`,
-      variants: source.variants.map((v) => ({
-        ...v,
-        id: `${newId}-${v.id}`,
-        sku: `${v.sku}-C`,
-      })),
-    }
-    setProductsState((prev) => [created, ...prev])
-    return created
-  }, [products])
+  const duplicateProduct = useCallback(
+    (id: string): Product | null => {
+      const source = products.find((p) => p.id === id || p.slug === id)
+      if (!source) return null
+      const stamp = Date.now().toString(36)
+      const newId = `${source.id}-copy-${stamp}`
+      const created: Product = {
+        ...source,
+        id: newId,
+        slug: `${source.slug}-copy-${stamp}`,
+        name: `${source.name} (Copy)`,
+        menuLabel: `${source.menuLabel} Copy`,
+        variants: (source.variants ?? []).map((v) => ({
+          ...v,
+          id: `${newId}-${v.id}`,
+          sku: `${v.sku}-C`,
+        })),
+        images: [...(source.images ?? [])],
+        colors: [...(source.colors ?? [])],
+        features: [...(source.features ?? [])],
+      }
+      setProductsState((prev) => [created, ...prev])
+      return created
+    },
+    [products],
+  )
 
-  const addVariant = useCallback((productId: string, variant: ProductVariant) => {
-    setProductsState((prev) =>
-      prev.map((p) => {
-        if (p.id !== productId && p.slug !== productId) return p
-        const exists = p.variants.some((v) => v.id === variant.id)
-        return {
-          ...p,
-          variants: exists
-            ? p.variants.map((v) => (v.id === variant.id ? variant : v))
-            : [...p.variants, variant],
-          colors: p.colors.some((c) => c.name === variant.color)
-            ? p.colors
-            : [
-                ...p.colors,
-                { name: variant.color, hex: variant.hex, label: variant.color },
-              ],
-        }
-      }),
-    )
-  }, [])
+  const addVariant = useCallback(
+    (productId: string, variant: ProductVariant) => {
+      setProductsState((prev) =>
+        prev.map((p) => {
+          if (p.id !== productId && p.slug !== productId) return p
+          const variants = p.variants ?? []
+          const colors = p.colors ?? []
+          const exists = variants.some((v) => v.id === variant.id)
+          return {
+            ...p,
+            variants: exists
+              ? variants.map((v) => (v.id === variant.id ? variant : v))
+              : [...variants, variant],
+            colors: colors.some((c) => c.name === variant.color)
+              ? colors
+              : [
+                  ...colors,
+                  {
+                    name: variant.color,
+                    hex: variant.hex,
+                    label: variant.color,
+                  },
+                ],
+          }
+        }),
+      )
+    },
+    [],
+  )
 
   const setProducts = useCallback((next: Product[]) => {
     setProductsState(next)

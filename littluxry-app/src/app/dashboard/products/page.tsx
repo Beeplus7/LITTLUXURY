@@ -257,6 +257,15 @@ function ProductEditorModal({
       toast('Add at least one image or video')
       return
     }
+    const uploadWeight =
+      form.images.reduce((n, src) => n + (src.startsWith('data:') ? src.length : 0), 0) +
+      (form.video?.startsWith('data:') ? form.video.length : 0)
+    if (uploadWeight > 3_500_000) {
+      toast(
+        'Uploaded media is too large for this device. Use From library or smaller files.',
+      )
+      return
+    }
     const baseSlug = slugify(form.name) || `product-${Date.now()}`
     const id = form.id || baseSlug
     const slug = form.slug || baseSlug
@@ -931,7 +940,13 @@ function ProductsPageInner() {
                   <div className="flex items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={p.images[0]}
+                      src={
+                        (p.images ?? []).find(
+                          (src) =>
+                            !src.endsWith('.mp4') &&
+                            !src.startsWith('data:video'),
+                        ) || '/assets/fringe-hero.png'
+                      }
                       alt=""
                       className="h-10 w-10 rounded-lg object-cover ring-1 ring-white/10"
                     />
@@ -945,9 +960,9 @@ function ProductsPageInner() {
                   {(p.shopCategory ?? 'women').replace(/-/g, ' ')}
                 </td>
                 <td className="px-4 py-3 text-[#D4AF37]">${p.price}</td>
-                <td className="px-4 py-3">{p.variants.length}</td>
+                <td className="px-4 py-3">{(p.variants ?? []).length}</td>
                 <td className="px-4 py-3">
-                  {p.variants.reduce((s, v) => s + v.stock, 0)}
+                  {(p.variants ?? []).reduce((s, v) => s + (v.stock || 0), 0)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap justify-end gap-1.5">

@@ -31,7 +31,12 @@ export function ProductCard({ product, className }: Props) {
     return () => io.disconnect()
   }, [])
 
-  const image = product.images.find((i) => !i.endsWith('.mp4')) ?? product.images[0]
+  const images = product.images ?? []
+  const colors = product.colors ?? []
+  const image =
+    images.find(
+      (i) => !i.endsWith('.mp4') && !i.startsWith('data:video'),
+    ) ?? images[0]
 
   return (
     <div
@@ -46,10 +51,12 @@ export function ProductCard({ product, className }: Props) {
         <div
           className={cn(
             'relative aspect-[4/5] bg-gradient-to-br',
-            product.gradient,
+            product.gradient || 'from-zinc-900 to-black',
           )}
         >
-          {image && !image.endsWith('.mp4') ? (
+          {image &&
+          !image.endsWith('.mp4') &&
+          !image.startsWith('data:video') ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={image}
@@ -58,7 +65,7 @@ export function ProductCard({ product, className }: Props) {
             />
           ) : null}
           <div className="absolute bottom-3 left-3 flex gap-1.5">
-            {product.colors.slice(0, 5).map((c) => (
+            {colors.slice(0, 5).map((c) => (
               <span
                 key={c.name}
                 className="h-3 w-3 rounded-full border border-white/30"
@@ -70,7 +77,7 @@ export function ProductCard({ product, className }: Props) {
         </div>
         <div className="p-4">
           <p className="text-[11px] uppercase tracking-[0.18em] text-[#b8b0a4]">
-            {product.shopCategory.replace(/-/g, ' ')}
+            {(product.shopCategory ?? 'women').replace(/-/g, ' ')}
           </p>
           <h3 className="serif mt-1 text-lg leading-tight">{product.name}</h3>
           <p className="mt-1 text-[12px] text-[#6a655c]">{product.menuLabel}</p>
@@ -84,8 +91,8 @@ export function ProductCard({ product, className }: Props) {
             productId: product.id,
             name: product.name,
             price: product.price,
-            color: product.colors[0]?.name ?? 'Default',
-            image,
+            color: colors[0]?.name ?? 'Default',
+            image: image ?? '/assets/fringe-hero.png',
           })
           toast(`Added ${product.menuLabel} to cart`)
         }}
