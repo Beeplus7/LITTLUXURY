@@ -1,0 +1,5 @@
+# Supabase project linked locally — run `npx supabase login` then
+# `npx supabase link --project-ref ungfnedvfrdxhhfgiovn` when ready.
+# Schema/migrations come in a later step (foundation only).
+
+project_id = "ungfnedvfrdxhhfgiovn"

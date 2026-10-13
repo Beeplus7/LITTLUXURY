@@ -1,0 +1,19 @@
+{
+  "name": "littluxury",
+  "private": true,
+  "version": "0.1.0",
+  "description": "LITTLUXURY — fashion e-commerce (web + mobile)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@littluxury/web",
+    "dev:mobile": "npm run start --workspace=@littluxury/mobile",
+    "build:web": "npm run build --workspace=@littluxury/web",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
