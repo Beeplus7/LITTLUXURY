@@ -13,6 +13,9 @@ Examples:
 
   python3 scripts/scrape_yupoo_public.py \\
     --url https://makeawishlove.x.yupoo.com/albums/254205849?uid=1
+
+  python3 scripts/scrape_yupoo_public.py \\
+    --url "https://fabpurse.x.yupoo.com/categories/22731?isSubCate=true"
 """
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -148,6 +151,25 @@ def is_albums_index(url: str) -> bool:
     return path.endswith("/albums") or path == "/albums"
 
 
+def is_category_index(url: str) -> bool:
+    return bool(re.search(r"/categories/\d+", urlparse(url).path))
+
+
+def is_album_listing(url: str) -> bool:
+    """Shop pages that list albums (index or category) rather than a single gallery."""
+    return is_albums_index(url) or is_category_index(url)
+
+
+def with_page(url: str, page: int) -> str:
+    """Set/replace page=N while preserving other query params (e.g. isSubCate)."""
+    if page <= 1:
+        return url
+    p = urlparse(url)
+    q = {k: v[0] for k, v in parse_qs(p.query, keep_blank_values=True).items()}
+    q["page"] = str(page)
+    return urlunparse(p._replace(query=urlencode(q)))
+
+
 def normalize_album_url(url: str) -> str:
     """Individual albums on many shops need ?uid=1 to render public gallery HTML."""
     if re.search(r"/albums/\d+", url) and "uid=" not in url:
@@ -167,9 +189,7 @@ def fetch_paginated_html(
     seen: set[str] = set()
     base = url
     for page in range(1, max_pages + 1):
-        cand = base if page == 1 else (
-            f"{base}&page={page}" if "?" in base else f"{base}?page={page}"
-        )
+        cand = with_page(base, page)
         try:
             resp = session.get(cand, headers=HEADERS, timeout=20)
         except requests.RequestException as e:
@@ -204,7 +224,7 @@ def discover_album_ids(
     for page in range(1, max_pages + 1):
         if len(ids) >= max_albums:
             break
-        cand = index_url if page == 1 else f"{index_url.rstrip('/')}?page={page}"
+        cand = with_page(index_url, page)
         try:
             resp = session.get(
                 cand,
@@ -212,10 +232,10 @@ def discover_album_ids(
                 timeout=20,
             )
         except requests.RequestException as e:
-            print(f"  albums index {page}: stop ({e})", flush=True)
+            print(f"  listing page {page}: stop ({e})", flush=True)
             break
         if resp.status_code != 200:
-            print(f"  albums index {page}: HTTP {resp.status_code}, stop", flush=True)
+            print(f"  listing page {page}: HTTP {resp.status_code}, stop", flush=True)
             break
         found = ALBUM_ID_RE.findall(resp.text)
         new = [a for a in found if a not in seen]
@@ -226,7 +246,7 @@ def discover_album_ids(
                 ids.append(a)
                 if len(ids) >= max_albums:
                     break
-        print(f"  albums index {page}: +{len(new)} (total {len(ids)})", flush=True)
+        print(f"  listing page {page}: +{len(new)} (total {len(ids)})", flush=True)
         if page > 1 and not new:
             break
         time.sleep(0.25)
@@ -336,10 +356,10 @@ def main() -> int:
                 # retry with uid=1
                 url = normalize_album_url(url)
                 resp0 = session.get(url, headers=HEADERS, timeout=25)
-            if resp0.status_code == 404 and not is_albums_index(url):
+            if resp0.status_code == 404 and not is_album_listing(url):
                 print(f"FAIL: URL returned 404 (private/removed?): {url}", file=sys.stderr)
                 continue
-            if is_albums_index(url):
+            if is_album_listing(url):
                 html = fetch_albums_index_photos(
                     session,
                     url,
