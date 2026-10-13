@@ -4,63 +4,66 @@ export type MediaItem = {
   src: string
   label: string
   tags: string[]
+  sizeLabel?: string
+  favorite?: boolean
 }
 
 export const mediaLibrary: MediaItem[] = [
   {
-    id: 'vid-fringe',
+    id: 'vid-campaign',
     type: 'video',
     src: '/assets/video.mp4',
-    label: 'Fringe Muse — 5 Colors Rotating',
+    label: 'Campaign Reel 01',
     tags: ['hero', 'fringe', 'video'],
+    sizeLabel: '2.4 MB',
+    favorite: true,
   },
   {
-    id: 'img-rosso-1',
-    type: 'image',
-    src: '/assets/rosso-1.jpg',
-    label: 'Rosso Bucket 01',
-    tags: ['rosso', 'product'],
-  },
-  {
-    id: 'img-rosso-2',
-    type: 'image',
-    src: '/assets/rosso-2.jpg',
-    label: 'Rosso Bucket 02',
-    tags: ['rosso', 'product'],
-  },
-  {
-    id: 'img-rosso-3',
-    type: 'image',
-    src: '/assets/rosso-3.jpg',
-    label: 'Rosso Bucket 03',
-    tags: ['rosso', 'product'],
-  },
-  {
-    id: 'img-riviera-1',
-    type: 'image',
-    src: '/assets/riviera-1.jpg',
-    label: 'Riviera Straw 01',
-    tags: ['riviera', 'product'],
-  },
-  {
-    id: 'img-riviera-2',
-    type: 'image',
-    src: '/assets/riviera-2.jpg',
-    label: 'Riviera Straw 02',
-    tags: ['riviera', 'product'],
-  },
-  {
-    id: 'img-riviera-3',
-    type: 'image',
-    src: '/assets/riviera-3.jpg',
-    label: 'Riviera Straw 03',
-    tags: ['riviera', 'product'],
-  },
-  {
-    id: 'img-fringe-hero',
+    id: 'img-noir',
     type: 'image',
     src: '/assets/fringe-hero.png',
-    label: 'Fringe Hero Still',
-    tags: ['fringe', 'hero'],
+    label: 'Noir Studio',
+    tags: ['fringe', 'studio'],
+    sizeLabel: '2.4 MB',
+  },
+  {
+    id: 'img-blanc',
+    type: 'image',
+    src: '/assets/riviera-1.jpg',
+    label: 'Blanc Flatlay',
+    tags: ['fringe', 'flatlay'],
+    sizeLabel: '2.4 MB',
+  },
+  {
+    id: 'img-oat',
+    type: 'image',
+    src: '/assets/riviera-2.jpg',
+    label: 'Oat Detail',
+    tags: ['fringe', 'detail'],
+    sizeLabel: '2.4 MB',
+  },
+  {
+    id: 'img-blush',
+    type: 'image',
+    src: '/assets/riviera-3.jpg',
+    label: 'Blush On Model',
+    tags: ['fringe', 'model'],
+    sizeLabel: '2.4 MB',
+  },
+  {
+    id: 'img-emerald',
+    type: 'image',
+    src: '/assets/rosso-1.jpg',
+    label: 'Emerald Hardware',
+    tags: ['detail', 'hardware'],
+    sizeLabel: '2.4 MB',
+  },
+  {
+    id: 'img-rosso',
+    type: 'image',
+    src: '/assets/rosso-hero.png',
+    label: 'Rosso Texture',
+    tags: ['rosso', 'texture'],
+    sizeLabel: '2.4 MB',
   },
 ]
