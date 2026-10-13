@@ -116,6 +116,22 @@ export type Product = {
   video?: string
   /** draft = saved in admin only; published = live on shop */
   status?: ProductStatus
+  /** Marketplace-style catalog fields (Shopify / Etsy / Amazon parity) */
+  brand?: string
+  tags?: string[]
+  materials?: string
+  care?: string
+  sku?: string
+  barcode?: string
+  /** Merchant cost (admin only) */
+  cost?: number
+  weightGrams?: number
+  seoTitle?: string
+  seoDescription?: string
+  shippingNote?: string
+  returnsNote?: string
+  /** Etsy-style processing / dispatch window */
+  processingDays?: number
 }
 
 export function isPublishedProduct(product: Product): boolean {
@@ -731,5 +747,28 @@ export function normalizeProduct(raw: Partial<Product> & { id: string }): Produc
     variants: raw.variants ?? base?.variants ?? [],
     video: raw.video ?? base?.video,
     status: raw.status === 'draft' ? 'draft' : 'published',
+    brand: raw.brand ?? base?.brand ?? 'Litt Luxury',
+    tags: Array.isArray(raw.tags)
+      ? raw.tags
+      : Array.isArray(base?.tags)
+        ? base!.tags
+        : [],
+    materials: raw.materials ?? base?.materials ?? '',
+    care: raw.care ?? base?.care ?? '',
+    sku: raw.sku ?? base?.sku,
+    barcode: raw.barcode ?? base?.barcode,
+    cost: raw.cost ?? base?.cost,
+    weightGrams: raw.weightGrams ?? base?.weightGrams,
+    seoTitle: raw.seoTitle ?? base?.seoTitle,
+    seoDescription: raw.seoDescription ?? base?.seoDescription,
+    shippingNote:
+      raw.shippingNote ??
+      base?.shippingNote ??
+      'Free tracked shipping on orders over $150. Dispatch from our atelier.',
+    returnsNote:
+      raw.returnsNote ??
+      base?.returnsNote ??
+      '30-day returns on unused items in original packaging.',
+    processingDays: raw.processingDays ?? base?.processingDays ?? 2,
   }
 }

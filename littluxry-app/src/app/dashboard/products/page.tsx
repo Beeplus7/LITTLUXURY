@@ -72,6 +72,21 @@ function emptyProduct(): Product {
     variants: [],
     video: undefined,
     status: 'draft',
+    brand: 'Litt Luxury',
+    tags: [],
+    materials: '',
+    care: '',
+    sku: '',
+    barcode: '',
+    cost: undefined,
+    weightGrams: undefined,
+    seoTitle: '',
+    seoDescription: '',
+    shippingNote:
+      'Free tracked shipping on orders over $150. Dispatch from our atelier.',
+    returnsNote:
+      '30-day returns on unused items in original packaging.',
+    processingDays: 2,
   }
 }
 
@@ -111,6 +126,7 @@ function ProductEditorModal({
   const [featureText, setFeatureText] = useState(
     (initial.features || []).join('\n'),
   )
+  const [tagsText, setTagsText] = useState((initial.tags || []).join(', '))
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadingVideo, setUploadingVideo] = useState(false)
@@ -381,6 +397,31 @@ function ProductEditorModal({
       images,
       video: video || undefined,
       status: publish ? 'published' : 'draft',
+      brand: (form.brand || 'Litt Luxury').trim(),
+      tags: tagsText
+        .split(/[,#]/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 24),
+      materials: (form.materials || '').trim(),
+      care: (form.care || '').trim(),
+      sku: (form.sku || '').trim() || undefined,
+      barcode: (form.barcode || '').trim() || undefined,
+      cost:
+        form.cost != null && !Number.isNaN(Number(form.cost))
+          ? Number(form.cost)
+          : undefined,
+      weightGrams: form.weightGrams
+        ? Number(form.weightGrams) || undefined
+        : undefined,
+      seoTitle: (form.seoTitle || '').trim() || undefined,
+      seoDescription: (form.seoDescription || '').trim() || undefined,
+      shippingNote: (form.shippingNote || '').trim() || undefined,
+      returnsNote: (form.returnsNote || '').trim() || undefined,
+      processingDays:
+        form.processingDays != null
+          ? Math.max(0, Number(form.processingDays) || 0)
+          : 2,
     }
   }
 
@@ -513,6 +554,81 @@ function ProductEditorModal({
               className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
             />
           </label>
+          <label className="block text-[12px] text-[#b8b0a4]">
+            Brand / vendor
+            <input
+              value={form.brand || ''}
+              onChange={(e) => patchForm({ brand: e.target.value })}
+              placeholder="Litt Luxury"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4]">
+            URL handle (slug)
+            <input
+              value={form.slug}
+              onChange={(e) => patchForm({ slug: slugify(e.target.value) })}
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm font-mono"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4]">
+            Cost (admin)
+            <input
+              type="number"
+              value={form.cost ?? ''}
+              onChange={(e) =>
+                patchForm({
+                  cost: e.target.value === '' ? undefined : Number(e.target.value),
+                })
+              }
+              placeholder="Your cost"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4]">
+            Weight (grams)
+            <input
+              type="number"
+              value={form.weightGrams ?? ''}
+              onChange={(e) =>
+                patchForm({
+                  weightGrams:
+                    e.target.value === ''
+                      ? undefined
+                      : Number(e.target.value) || undefined,
+                })
+              }
+              placeholder="e.g. 480"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4]">
+            Product SKU
+            <input
+              value={form.sku || ''}
+              onChange={(e) => patchForm({ sku: e.target.value })}
+              placeholder="LL-…"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4]">
+            Barcode / GTIN
+            <input
+              value={form.barcode || ''}
+              onChange={(e) => patchForm({ barcode: e.target.value })}
+              placeholder="Optional UPC/EAN"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
+            Tags (comma separated)
+            <input
+              value={tagsText}
+              onChange={(e) => setTagsText(e.target.value)}
+              placeholder="leather, hobo, gift"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
           <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
             Features (one per line)
             <textarea
@@ -523,6 +639,105 @@ function ProductEditorModal({
               className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
             />
           </label>
+          <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
+            Materials
+            <textarea
+              value={form.materials || ''}
+              onChange={(e) => patchForm({ materials: e.target.value })}
+              rows={2}
+              placeholder="Full-grain Italian leather, gold-tone hardware…"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
+            Care instructions
+            <textarea
+              value={form.care || ''}
+              onChange={(e) => patchForm({ care: e.target.value })}
+              rows={2}
+              placeholder="Wipe with soft cloth. Store in dust bag."
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-white/10 p-4">
+          <h3 className="mb-3 text-sm font-semibold">Shipping & returns</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-[12px] text-[#b8b0a4]">
+              Processing days
+              <input
+                type="number"
+                min={0}
+                value={form.processingDays ?? 2}
+                onChange={(e) =>
+                  patchForm({ processingDays: Number(e.target.value) || 0 })
+                }
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
+              Shipping note
+              <textarea
+                value={form.shippingNote || ''}
+                onChange={(e) => patchForm({ shippingNote: e.target.value })}
+                rows={2}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-[12px] text-[#b8b0a4] sm:col-span-2">
+              Returns note
+              <textarea
+                value={form.returnsNote || ''}
+                onChange={(e) => patchForm({ returnsNote: e.target.value })}
+                rows={2}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-white/10 p-4">
+          <h3 className="mb-3 text-sm font-semibold">Search engine listing</h3>
+          <div className="grid gap-3">
+            <label className="block text-[12px] text-[#b8b0a4]">
+              SEO title
+              <input
+                value={form.seoTitle || ''}
+                onChange={(e) => patchForm({ seoTitle: e.target.value })}
+                placeholder={form.name || 'Page title for Google'}
+                maxLength={70}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-[12px] text-[#b8b0a4]">
+              Meta description
+              <textarea
+                value={form.seoDescription || ''}
+                onChange={(e) => patchForm({ seoDescription: e.target.value })}
+                placeholder="Short description for search results"
+                maxLength={160}
+                rows={2}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-[12px]">
+              <p className="text-[#6a655c]">Preview</p>
+              <p className="mt-1 text-[#7aa7ff]">
+                {(form.seoTitle || form.name || 'Product').slice(0, 70)}
+              </p>
+              <p className="text-[11px] text-emerald-500/80">
+                litt-luxury.com/shop/{form.slug || 'product'}
+              </p>
+              <p className="mt-1 text-[#b8b0a4]">
+                {(
+                  form.seoDescription ||
+                  form.description ||
+                  'Premium piece from Litt Luxury.'
+                ).slice(0, 160)}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-white/10 p-4">

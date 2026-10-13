@@ -3,14 +3,17 @@
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Minus, Plus, Star } from 'lucide-react'
+import { ChevronDown, Heart, Minus, Plus, Star } from 'lucide-react'
 import { Reviews } from '@/components/Reviews'
 import { Footer } from '@/components/Footer'
 import { ProductMedia } from '@/components/ProductMedia'
 import { ProductShareButtons } from '@/components/ProductShareButtons'
+import { ProductInfoAccordions } from '@/components/ProductInfoAccordions'
+import { RelatedProducts } from '@/components/RelatedProducts'
 import { useProducts } from '@/context/ProductsContext'
 import { useCart } from '@/context/CartContext'
 import { useUI } from '@/context/UIContext'
+import { useWishlist } from '@/hooks/useWishlist'
 import { isPublishedProduct, sizesForShopCategory } from '@/data/products'
 import { isVideoSrc } from '@/lib/localMediaStore'
 import { useToast } from '@/lib/toast'
@@ -19,10 +22,11 @@ import { cn } from '@/lib/cn'
 export default function ProductPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
-  const { getProduct } = useProducts()
+  const { getProduct, products } = useProducts()
   const { addToCart } = useCart()
   const { setMenuOpen } = useUI()
   const { toast } = useToast()
+  const wishlist = useWishlist()
 
   const rawProduct = getProduct(params.id)
   const product =
@@ -31,7 +35,6 @@ export default function ProductPage() {
   const [size, setSize] = useState('')
   const [qty, setQty] = useState(1)
   const [activeImage, setActiveImage] = useState(0)
-  const [openDetail, setOpenDetail] = useState(true)
 
   const selectedColor = useMemo(() => {
     if (!product) return null
@@ -93,6 +96,25 @@ export default function ProductPage() {
     setActiveImage(0)
   }, [product?.id])
 
+  useEffect(() => {
+    if (!product) return
+    const title =
+      product.seoTitle?.trim() ||
+      `${product.name} | Litt Luxury`
+    document.title = title
+    const desc =
+      product.seoDescription?.trim() ||
+      product.description?.slice(0, 160) ||
+      ''
+    let meta = document.querySelector('meta[name="description"]')
+    if (!meta) {
+      meta = document.createElement('meta')
+      meta.setAttribute('name', 'description')
+      document.head.appendChild(meta)
+    }
+    meta.setAttribute('content', desc)
+  }, [product])
+
   if (!product) {
     return (
       <div className="grid min-h-[60vh] place-items-center px-5 text-center">
@@ -112,9 +134,14 @@ export default function ProductPage() {
     gallery.find((src) => !isVideoSrc(src)) ?? current ?? '/assets/fringe-hero.png'
   const colors = product.colors ?? []
   const features = product.features ?? []
+  const tags = product.tags ?? []
   const displayPrice = selectedVariant?.price ?? product.price
   const compareAt = product.original
-  const inStock = (selectedVariant?.stock ?? 1) > 0
+  const stock = selectedVariant?.stock
+  const inStock = (stock ?? 1) > 0
+  const lowStock = stock != null && stock > 0 && stock <= 3
+  const wished = wishlist.has(product.id)
+  const selectedSku = selectedVariant?.sku || product.sku
 
   function add(buyNow = false) {
     if (!product || !selectedColor) return
@@ -159,6 +186,11 @@ export default function ProductPage() {
                 autoPlay
               />
             ) : null}
+            {compareAt > displayPrice ? (
+              <span className="absolute left-3 top-3 rounded-full bg-[#D4AF37] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-black">
+                Sale
+              </span>
+            ) : null}
           </div>
           {gallery.length > 1 ? (
             <div className="mt-3 flex gap-2 overflow-x-auto">
@@ -192,11 +224,29 @@ export default function ProductPage() {
           <div className="flex items-center gap-2 text-sm text-[#b8b0a4]">
             <Star size={14} className="text-[#D4AF37]" fill="currentColor" />
             {product.rating} · {product.reviewCount} reviews
-            <span className="ml-auto rounded-full border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
-              {inStock ? 'In stock' : 'Sold out'}
+            <span
+              className={cn(
+                'ml-auto rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em]',
+                inStock
+                  ? lowStock
+                    ? 'border-amber-400/40 text-amber-300'
+                    : 'border-emerald-500/30 text-emerald-400'
+                  : 'border-white/10 text-[#b8b0a4]',
+              )}
+            >
+              {!inStock
+                ? 'Sold out'
+                : lowStock
+                  ? `Only ${stock} left`
+                  : 'In stock'}
             </span>
           </div>
-          <h1 className="serif mt-3 text-[34px] leading-[0.95] md:text-[42px]">
+          {product.brand ? (
+            <p className="mt-3 text-[11px] uppercase tracking-[0.2em] text-[#b8b0a4]">
+              {product.brand}
+            </p>
+          ) : null}
+          <h1 className="serif mt-2 text-[34px] leading-[0.95] md:text-[42px]">
             {product.name}
           </h1>
           <p className="mt-4 max-w-[44ch] text-[14px] leading-relaxed text-[#b8b0a4]">
@@ -215,6 +265,12 @@ export default function ProductPage() {
               </>
             ) : null}
           </div>
+          {product.processingDays != null ? (
+            <p className="mt-3 text-[12px] text-[#b8b0a4]">
+              Ships in about {product.processingDays} business day
+              {product.processingDays === 1 ? '' : 's'}
+            </p>
+          ) : null}
 
           <div className="mt-8">
             <div className="mb-3 flex items-center justify-between">
@@ -275,15 +331,15 @@ export default function ProductPage() {
                         v.color === selectedColor?.name &&
                         (v.size || 'OS') === s,
                     )
-                    const stock = variant?.stock
+                    const vStock = variant?.stock
                     const label =
-                      stock != null && stock <= 0
+                      vStock != null && vStock <= 0
                         ? `${s} — sold out`
-                        : stock != null && stock <= 3
-                          ? `${s} — low stock`
+                        : vStock != null && vStock <= 3
+                          ? `${s} — only ${vStock} left`
                           : s
                     return (
-                      <option key={s} value={s} disabled={stock === 0}>
+                      <option key={s} value={s} disabled={vStock === 0}>
                         {label}
                       </option>
                     )
@@ -332,10 +388,41 @@ export default function ProductPage() {
                 <Minus size={14} />
               </button>
               <span className="w-6 text-center text-sm">{qty}</span>
-              <button type="button" onClick={() => setQty((q) => q + 1)}>
+              <button
+                type="button"
+                onClick={() =>
+                  setQty((q) =>
+                    stock != null ? Math.min(stock, q + 1) : q + 1,
+                  )
+                }
+              >
                 <Plus size={14} />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                wishlist.toggle(product.id)
+                toast(
+                  wished
+                    ? 'Removed from wishlist'
+                    : 'Saved to wishlist',
+                )
+              }}
+              className={cn(
+                'flex items-center gap-2 rounded-full border px-4 py-2.5 text-[11px] uppercase tracking-[0.14em] transition',
+                wished
+                  ? 'border-[#D4AF37]/50 text-[#D4AF37]'
+                  : 'border-white/15 text-[#b8b0a4] hover:border-white/30',
+              )}
+              aria-pressed={wished}
+            >
+              <Heart
+                size={14}
+                fill={wished ? 'currentColor' : 'none'}
+              />
+              {wished ? 'Saved' : 'Save'}
+            </button>
           </div>
 
           <div className="mt-6 hidden gap-3 md:flex">
@@ -365,32 +452,31 @@ export default function ProductPage() {
             ))}
           </ul>
 
+          {tags.length ? (
+            <div className="mt-6 flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-[#b8b0a4]"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
           <ProductShareButtons productName={product.name} />
 
-          <button
-            type="button"
-            onClick={() => setOpenDetail((v) => !v)}
-            className="mt-8 flex w-full items-center justify-between border-t border-white/10 py-4 text-left"
-          >
-            <span className="text-[12px] uppercase tracking-[0.18em]">
-              Details
-            </span>
-            <ChevronDown
-              size={16}
-              className={cn('transition', openDetail && 'rotate-180')}
-            />
-          </button>
-          {openDetail ? (
-            <p className="pb-4 text-sm leading-relaxed text-[#b8b0a4]">
-              Hand-finished in small batches. Each piece ships in signature LL
-              packaging. Selected colour: {selectedColor?.name}. Size:{' '}
-              {size || '—'}.
-            </p>
-          ) : null}
+          <ProductInfoAccordions
+            product={product}
+            selectedSku={selectedSku}
+          />
         </div>
       </div>
 
       <Reviews />
+
+      <RelatedProducts product={product} catalog={products} />
 
       <div className="fixed inset-x-0 bottom-[58px] z-30 border-t border-white/10 bg-[#0a0a0a]/95 p-3 backdrop-blur md:hidden">
         <div className="flex gap-2">
