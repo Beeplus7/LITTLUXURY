@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Sparkles,
   Send,
@@ -12,6 +12,8 @@ import {
   PackagePlus,
   Library,
   X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { useProducts } from '@/context/ProductsContext'
 import { useToast } from '@/lib/toast'
@@ -24,36 +26,19 @@ import {
 import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
 import { MediaPickerModal } from '@/components/MediaPickerModal'
 import type { MediaItem } from '@/data/media'
+import {
+  COLOR_MAP,
+  generateProductCopy,
+  interpretBuilderMessage,
+  suggestionsFor,
+  type BuilderAction,
+  type BuilderDraft,
+} from '@/lib/aiBuilderChat'
 import { cn } from '@/lib/cn'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
 
-const COLOR_MAP: Record<string, string> = {
-  beige: '#d9c5b4',
-  oat: '#d9c5b4',
-  emerald: '#1a7a4c',
-  green: '#1a7a4c',
-  pink: '#e8a0bf',
-  blush: '#e8a0bf',
-  black: '#111111',
-  noir: '#111111',
-  white: '#f5f5f5',
-  blanc: '#f5f5f5',
-  red: '#c1272d',
-  rosso: '#c1272d',
-}
-
-type Draft = {
-  title: string
-  description: string
-  price: number
-  sourceUrl?: string
-  images: string[]
-  video?: string | null
-  brand?: string | null
-  variants: ExtractedVariant[]
-  analysisNote?: string
-}
+type Draft = BuilderDraft
 
 function emptyDraft(): Draft {
   return {
@@ -72,71 +57,153 @@ export function AIBuilder({ productId }: { productId?: string }) {
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLInputElement>(null)
+  const chatEndRef = useRef<HTMLDivElement>(null)
   const [input, setInput] = useState('')
   const [link, setLink] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadingVideo, setUploadingVideo] = useState(false)
+  const [thinking, setThinking] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [draftOpen, setDraftOpen] = useState(true)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>(
+    suggestionsFor(null),
+  )
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      text: 'AI Shop Builder ready. Paste a product URL, pick images from Media Library, upload photos/video, or ask for a color variant.',
+      text: 'Hi — I’m your LITTLUXRY shop builder. Talk to me like a teammate: “pick bags from library”, paste a product URL, “call it Noir Fringe”, “set price to 248”, or “import to shop”.',
     },
   ])
+
+  const draftRef = useRef<Draft | null>(null)
+  draftRef.current = draft
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, thinking])
+
+  useEffect(() => {
+    setSuggestions(suggestionsFor(draft))
+  }, [draft])
 
   function push(role: Msg['role'], text: string) {
     setMessages((m) => [...m, { role, text }])
   }
 
-  function handlePrompt(raw: string) {
+  async function runActions(actions: BuilderAction[]) {
+    for (const action of actions) {
+      switch (action.type) {
+        case 'analyze_url':
+          setLink(action.url)
+          await extractFromUrl(action.url, { silentUser: true })
+          break
+        case 'open_library':
+          setLibraryOpen(true)
+          break
+        case 'upload_images':
+          fileRef.current?.click()
+          break
+        case 'upload_video':
+          videoRef.current?.click()
+          break
+        case 'set_title':
+          setDraft((prev) => {
+            const base = prev ?? emptyDraft()
+            return { ...base, title: action.title }
+          })
+          setDraftOpen(true)
+          break
+        case 'set_price':
+          setDraft((prev) => {
+            const base = prev ?? emptyDraft()
+            return { ...base, price: action.price }
+          })
+          setDraftOpen(true)
+          break
+        case 'set_description':
+          setDraft((prev) => {
+            const base = prev ?? emptyDraft()
+            return { ...base, description: action.description }
+          })
+          setDraftOpen(true)
+          break
+        case 'generate_copy': {
+          const current = draftRef.current
+          if (!current) break
+          const copy = generateProductCopy(current)
+          setDraft({ ...current, ...copy })
+          setDraftOpen(true)
+          push(
+            'assistant',
+            `Updated copy:\nTitle: ${copy.title}\n${copy.description}`,
+          )
+          toast('Copy drafted')
+          break
+        }
+        case 'import':
+          publishDraft()
+          break
+        case 'clear_draft':
+          setDraft(null)
+          setLink('')
+          break
+        case 'add_color_variant':
+          addColorVariant(action.colorKey)
+          break
+        case 'select_variants':
+          selectAllVariants(action.mode === 'all')
+          break
+        case 'attach':
+          attachImagesToSelected()
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  async function handlePrompt(raw: string) {
     const prompt = raw.trim()
-    if (!prompt) return
+    if (!prompt || thinking) return
     push('user', prompt)
     setInput('')
-
-    if (/^https?:\/\//i.test(prompt)) {
-      setLink(prompt)
-      void extractFromUrl(prompt)
-      return
+    setThinking(true)
+    try {
+      // Small delay so the chat feels responsive/alive
+      await new Promise((r) => setTimeout(r, 280))
+      const turn = interpretBuilderMessage(prompt, draftRef.current)
+      if (turn.reply) push('assistant', turn.reply)
+      if (turn.suggestions?.length) setSuggestions(turn.suggestions)
+      await runActions(turn.actions)
+    } finally {
+      setThinking(false)
     }
+  }
 
-    const lower = prompt.toLowerCase()
-    if (/\b(import|publish|add)\b.*\b(variant|all)\b/.test(lower) && draft) {
-      publishDraft()
-      return
-    }
-
-    const colorKey = Object.keys(COLOR_MAP).find((k) => lower.includes(k))
+  function addColorVariant(colorKey: string) {
     const targetId =
       productId ??
       products.find((p) => p.category === 'fringe')?.id ??
       products[0]?.id
-
-    if (!targetId || !colorKey) {
-      push(
-        'assistant',
-        'Paste a product URL to analyze images & variants, upload images, or mention a color like beige / emerald.',
-      )
+    if (!targetId) {
+      push('assistant', 'No product is available to attach a variant to yet.')
       return
     }
-
     const product = getProduct(targetId)
     if (!product) return
-
     const colorName = colorKey.charAt(0).toUpperCase() + colorKey.slice(1)
-    const hex = COLOR_MAP[colorKey]
+    const hex = COLOR_MAP[colorKey] ?? '#888888'
     const variant: ProductVariant = {
       id: `${product.id}-${colorKey}-${Date.now()}`,
       color: colorName,
       hex,
-      price: product.price,
+      price: draftRef.current?.price || product.price,
       stock: 10,
       sku: `LL-AI-${colorKey.slice(0, 3).toUpperCase()}`,
-      image: draft?.images[0] ?? product.images[0],
+      image: draftRef.current?.images[0] ?? product.images[0],
     }
-
     addVariant(product.id, variant)
     push(
       'assistant',
@@ -145,14 +212,17 @@ export function AIBuilder({ productId }: { productId?: string }) {
     toast(`${colorName} variant added`)
   }
 
-  async function extractFromUrl(urlOverride?: string) {
+  async function extractFromUrl(
+    urlOverride?: string,
+    opts?: { silentUser?: boolean },
+  ) {
     const url = (urlOverride ?? link).trim()
     if (!url) {
       toast('Paste a product URL first')
       return
     }
     setExtracting(true)
-    push('user', `Analyze ${url}`)
+    if (!opts?.silentUser) push('user', `Analyze ${url}`)
     try {
       const res = await fetch('/api/extract-product', {
         method: 'POST',
@@ -162,7 +232,6 @@ export function AIBuilder({ productId }: { productId?: string }) {
       const data = (await res.json()) as {
         ok?: boolean
         product?: ExtractedProduct
-        analysis?: ExtractedProduct['analysis']
         error?: string
       }
       if (!res.ok || !data.product) {
@@ -173,10 +242,9 @@ export function AIBuilder({ productId }: { productId?: string }) {
         ...v,
         selected: v.selected !== false,
       }))
-      const images = [
-        ...p.images,
-        ...(p.image ? [p.image] : []),
-      ].filter((v, i, a) => a.indexOf(v) === i)
+      const images = [...p.images, ...(p.image ? [p.image] : [])].filter(
+        (v, i, a) => a.indexOf(v) === i,
+      )
 
       setDraft({
         title: p.title,
@@ -190,13 +258,20 @@ export function AIBuilder({ productId }: { productId?: string }) {
           p.analysis?.variantCount ?? variants.length
         } variants · via ${(p.analysis?.sources ?? []).join(', ') || 'page'}`,
       })
+      setDraftOpen(true)
 
       push(
         'assistant',
         `Analyzed “${p.title}”: ${images.length} image(s), ${variants.length} variant(s)${
           p.price ? ` · from $${Math.round(p.price)}` : ''
-        }. Toggle variants below, then Publish to import.`,
+        }. You can tweak the title/price in chat, or say “import to shop”.`,
       )
+      setSuggestions([
+        'Write a product description',
+        'Set price to 248',
+        'Import to shop',
+        'Show draft status',
+      ])
       toast('Link analyzed')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Analyze failed'
@@ -223,9 +298,10 @@ export function AIBuilder({ productId }: { productId?: string }) {
           images: [...base.images, ...loaded].slice(0, 16),
         }
       })
+      setDraftOpen(true)
       push(
         'assistant',
-        `Uploaded ${loaded.length} image${loaded.length === 1 ? '' : 's'}. Publish or paste a URL to pull variants too.`,
+        `Uploaded ${loaded.length} image${loaded.length === 1 ? '' : 's'}. Want me to write a title/description, set a price, or import?`,
       )
       toast(`${loaded.length} image${loaded.length === 1 ? '' : 's'} added`)
     } catch (e) {
@@ -252,9 +328,10 @@ export function AIBuilder({ productId }: { productId?: string }) {
           video: dataUrl,
         }
       })
+      setDraftOpen(true)
       push(
         'assistant',
-        `Video “${file.name}” attached (${(file.size / (1024 * 1024)).toFixed(1)}MB). It will save on the product when you Import.`,
+        `Video “${file.name}” attached (${(file.size / (1024 * 1024)).toFixed(1)}MB). Say “import” when you’re ready.`,
       )
       toast('Video uploaded')
     } catch (e) {
@@ -285,6 +362,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
       }
     })
     setLibraryOpen(false)
+    setDraftOpen(true)
     const parts = [
       images.length
         ? `${images.length} image${images.length === 1 ? '' : 's'}`
@@ -293,8 +371,14 @@ export function AIBuilder({ productId }: { productId?: string }) {
     ].filter(Boolean)
     push(
       'assistant',
-      `Added ${parts.join(' + ')} from Media Library. Edit the draft, then Import.`,
+      `Added ${parts.join(' + ')} from Media Library. Try “call it …”, “set price to 248”, “write a description”, or “import to shop”.`,
     )
+    setSuggestions([
+      'Call it Signature Bag',
+      'Write a product description',
+      'Set price to 248',
+      'Import to shop',
+    ])
     toast(`Added ${parts.join(' + ')} from library`)
   }
 
@@ -326,49 +410,52 @@ export function AIBuilder({ productId }: { productId?: string }) {
   }
 
   function publishDraft() {
-    if (!draft) return
-    if (!draft.title.trim()) {
+    const current = draftRef.current
+    if (!current) return
+    if (!current.title.trim()) {
+      push('assistant', 'Give it a title first — try “call it Riviera Fringe”.')
       toast('Add a product title')
       return
     }
-    if (!draft.images.length && !draft.video) {
+    if (!current.images.length && !current.video) {
+      push('assistant', 'Add at least one image or video before importing.')
       toast('Add at least one image or video')
       return
     }
 
-    const selectedIds = draft.variants
+    const selectedIds = current.variants
       .filter((v) => v.selected !== false)
       .map((v) => v.id)
 
     const extracted: ExtractedProduct = {
-      url: draft.sourceUrl || 'https://litt-luxury.com',
-      title: draft.title.trim(),
-      description: draft.description.trim(),
-      image: draft.images[0] ?? null,
-      images: draft.images,
-      price: draft.price,
+      url: current.sourceUrl || 'https://litt-luxury.com',
+      title: current.title.trim(),
+      description: current.description.trim(),
+      image: current.images[0] ?? null,
+      images: current.images,
+      price: current.price,
       currency: 'USD',
-      brand: draft.brand ?? null,
-      variants: draft.variants,
+      brand: current.brand ?? null,
+      variants: current.variants,
       analysis: {
-        imageCount: draft.images.length,
-        variantCount: draft.variants.length,
+        imageCount: current.images.length,
+        variantCount: current.variants.length,
         sources: ['ai-builder'],
       },
     }
     const product = productFromExtract(extracted, {
-      localImages: draft.images.length
-        ? draft.images
+      localImages: current.images.length
+        ? current.images
         : ['/assets/fringe-hero.png'],
       selectedVariantIds: selectedIds.length ? selectedIds : undefined,
-      video: draft.video,
+      video: current.video,
     })
     addProduct(product)
     push(
       'assistant',
       `Imported “${product.name}” with ${product.images.length} image(s), ${product.variants.length} variant(s)${
         product.video ? ', and a product video' : ''
-      }. Live in Shop & Products.`,
+      }. It’s live in Shop & Products. Want to build another?`,
     )
     toast(
       product.video
@@ -377,10 +464,12 @@ export function AIBuilder({ productId }: { productId?: string }) {
     )
     setDraft(null)
     setLink('')
+    setSuggestions(suggestionsFor(null))
   }
 
   function attachImagesToSelected() {
-    if (!draft?.images.length && !draft?.video) {
+    const current = draftRef.current
+    if (!current?.images.length && !current?.video) {
       toast('Upload images or a video first')
       return
     }
@@ -391,11 +480,13 @@ export function AIBuilder({ productId }: { productId?: string }) {
     if (!targetId) return
     const product = getProduct(targetId)
     if (!product) return
-    const images = [...(draft.images ?? []), ...product.images].filter(
+    const images = [...(current.images ?? []), ...product.images].filter(
       (v, i, a) => a.indexOf(v) === i,
     )
-    if (draft.video && !images.includes(draft.video)) images.push(draft.video)
-    const selectedVars = (draft.variants ?? []).filter(
+    if (current.video && !images.includes(current.video)) {
+      images.push(current.video)
+    }
+    const selectedVars = (current.variants ?? []).filter(
       (v) => v.selected !== false,
     )
     for (const v of selectedVars) {
@@ -406,17 +497,17 @@ export function AIBuilder({ productId }: { productId?: string }) {
         price: v.price && v.price > 0 ? Math.round(v.price) : product.price,
         stock: 8,
         sku: v.sku || `LL-IMP-${v.id.slice(0, 8).toUpperCase()}`,
-        image: v.image || draft.images[0],
+        image: v.image || current.images[0],
       })
     }
     updateProduct(targetId, {
       images,
-      ...(draft.video ? { video: draft.video } : {}),
+      ...(current.video ? { video: current.video } : {}),
     })
     push(
       'assistant',
-      `Attached ${draft.images.length} image(s)${
-        draft.video ? ' + video' : ''
+      `Attached ${current.images.length} image(s)${
+        current.video ? ' + video' : ''
       }${
         selectedVars.length ? ` + ${selectedVars.length} variant(s)` : ''
       } to ${product.menuLabel}.`,
@@ -428,105 +519,104 @@ export function AIBuilder({ productId }: { productId?: string }) {
     draft?.variants.filter((v) => v.selected !== false).length ?? 0
 
   return (
-    <div className="flex h-full min-h-[560px] flex-col rounded-2xl border border-white/10 bg-zinc-950">
-      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-        <Sparkles size={16} className="text-[#D4AF37]" />
-        <h3 className="text-sm font-semibold">AI Shop Builder</h3>
+    <div className="flex h-full min-h-[640px] flex-col rounded-2xl border border-white/10 bg-zinc-950">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-[#D4AF37]" />
+          <div>
+            <h3 className="text-sm font-semibold">AI Shop Builder</h3>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-[#6a655c]">
+              Conversational
+            </p>
+          </div>
+        </div>
+        {draft ? (
+          <button
+            type="button"
+            onClick={() => setDraftOpen((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-[10px] uppercase tracking-wider text-[#b8b0a4]"
+          >
+            Draft
+            {draftOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        ) : null}
       </div>
 
-      <div className="space-y-3 border-b border-white/10 p-3">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap gap-1.5 border-b border-white/10 px-3 py-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => void onUploadFiles(e.target.files)}
+        />
+        <input
+          ref={videoRef}
+          type="file"
+          accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+          className="hidden"
+          onChange={(e) => void onUploadVideo(e.target.files)}
+        />
+        <ToolChip
+          onClick={() => setLibraryOpen(true)}
+          icon={<Library size={12} />}
+          label="Library"
+          accent
+        />
+        <ToolChip
+          onClick={() => fileRef.current?.click()}
+          icon={
+            uploading ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <ImagePlus size={12} />
+            )
+          }
+          label="Upload"
+        />
+        <ToolChip
+          onClick={() => videoRef.current?.click()}
+          icon={
+            uploadingVideo ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Film size={12} />
+            )
+          }
+          label="Video"
+        />
+        <div className="ml-auto flex min-w-[180px] max-w-[260px] flex-1 gap-1">
           <div className="relative flex-1">
             <Link2
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#b8b0a4]"
+              size={12}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6a655c]"
             />
             <input
               value={link}
               onChange={(e) => setLink(e.target.value)}
-              placeholder="Paste product URL to analyze images & variants"
-              className="w-full rounded-full border border-white/10 bg-black py-2 pl-9 pr-3 text-sm outline-none focus:border-[#D4AF37]/50"
+              placeholder="Product URL"
+              className="w-full rounded-full border border-white/10 bg-black py-1.5 pl-7 pr-2 text-[11px] outline-none focus:border-[#D4AF37]/50"
             />
           </div>
           <button
             type="button"
             disabled={extracting}
             onClick={() => void extractFromUrl()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37] disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-full border border-[#D4AF37]/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#D4AF37] disabled:opacity-50"
           >
             {extracting ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={12} className="animate-spin" />
             ) : (
-              <PackagePlus size={14} />
+              <PackagePlus size={12} />
             )}
-            Analyze
+            Go
           </button>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => void onUploadFiles(e.target.files)}
-          />
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <ImagePlus size={14} />
-            )}
-            Upload images
-          </button>
-          <button
-            type="button"
-            onClick={() => setLibraryOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37]"
-          >
-            <Library size={14} />
-            Media library
-          </button>
-          <input
-            ref={videoRef}
-            type="file"
-            accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
-            className="hidden"
-            onChange={(e) => void onUploadVideo(e.target.files)}
-          />
-          <button
-            type="button"
-            disabled={uploadingVideo}
-            onClick={() => videoRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider disabled:opacity-50"
-          >
-            {uploadingVideo ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Film size={14} />
-            )}
-            Upload video
-          </button>
-          {draft?.images.length || draft?.video ? (
-            <button
-              type="button"
-              onClick={attachImagesToSelected}
-              className="rounded-full border border-white/15 px-3 py-2 text-[11px] uppercase tracking-wider text-[#b8b0a4]"
-            >
-              Attach to current product
-            </button>
-          ) : null}
         </div>
       </div>
 
-      {draft ? (
-        <div className="max-h-[340px] space-y-3 overflow-y-auto border-b border-white/10 p-3">
+      {draft && draftOpen ? (
+        <div className="max-h-[280px] space-y-3 overflow-y-auto border-b border-white/10 p-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
@@ -540,7 +630,11 @@ export function AIBuilder({ productId }: { productId?: string }) {
             </div>
             <button
               type="button"
-              onClick={() => setDraft(null)}
+              onClick={() => {
+                setDraft(null)
+                push('assistant', 'Draft cleared. What should we build next?')
+                setSuggestions(suggestionsFor(null))
+              }}
               className="text-[#b8b0a4] hover:text-white"
               aria-label="Clear draft"
             >
@@ -575,36 +669,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
                 className="h-14 w-20 shrink-0 rounded-lg object-cover ring-1 ring-[#D4AF37]/50"
               />
             ) : null}
-            {!draft.images.length && !draft.video ? (
-              <button
-                type="button"
-                onClick={() => setLibraryOpen(true)}
-                className="grid h-14 w-14 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4] ring-1 ring-dashed ring-white/15 hover:text-[#D4AF37]"
-              >
-                Pick
-              </button>
-            ) : null}
           </div>
-
-          {draft.video ? (
-            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-              <video
-                src={draft.video}
-                controls
-                playsInline
-                className="max-h-40 w-full object-contain"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setDraft((d) => (d ? { ...d, video: null } : d))
-                }
-                className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] uppercase tracking-wider text-white"
-              >
-                Remove video
-              </button>
-            </div>
-          ) : null}
 
           <div className="grid gap-2">
             <input
@@ -664,8 +729,8 @@ export function AIBuilder({ productId }: { productId?: string }) {
                   </button>
                 </div>
               </div>
-              <ul className="grid max-h-36 gap-1.5 overflow-y-auto">
-                {draft.variants.map((v) => (
+              <ul className="grid max-h-28 gap-1.5 overflow-y-auto">
+                {draft.variants.map((v: ExtractedVariant) => (
                   <li key={v.id}>
                     <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/50 px-2 py-1.5 text-[12px] hover:border-[#D4AF37]/30">
                       <input
@@ -690,20 +755,12 @@ export function AIBuilder({ productId }: { productId?: string }) {
                       <span className="min-w-0 flex-1 truncate text-[#f5f0e8]">
                         {[v.color, v.size].filter(Boolean).join(' · ') || v.name}
                       </span>
-                      <span className="text-[#D4AF37]">
-                        {v.price ? `$${Math.round(v.price)}` : '—'}
-                      </span>
                     </label>
                   </li>
                 ))}
               </ul>
             </div>
-          ) : (
-            <p className="text-[12px] text-[#6a655c]">
-              No variants found on page — a default variant will be created on
-              publish.
-            </p>
-          )}
+          ) : null}
 
           <button
             type="button"
@@ -716,11 +773,6 @@ export function AIBuilder({ productId }: { productId?: string }) {
             {draft.images.length === 1 ? '' : 's'}
             {draft.video ? ' · video' : ''}
           </button>
-          {draft.sourceUrl ? (
-            <p className="truncate text-[11px] text-[#6a655c]">
-              Source: {draft.sourceUrl}
-            </p>
-          ) : null}
         </div>
       ) : null}
 
@@ -729,7 +781,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
           <div
             key={i}
             className={cn(
-              'rounded-2xl px-3 py-2',
+              'whitespace-pre-wrap rounded-2xl px-3 py-2',
               m.role === 'user'
                 ? 'ml-8 bg-[#D4AF37]/15 text-[#f5f0e8]'
                 : 'mr-8 bg-zinc-900 text-[#b8b0a4]',
@@ -738,24 +790,49 @@ export function AIBuilder({ productId }: { productId?: string }) {
             {m.text}
           </div>
         ))}
+        {thinking ? (
+          <div className="mr-8 inline-flex items-center gap-2 rounded-2xl bg-zinc-900 px-3 py-2 text-[#6a655c]">
+            <Loader2 size={14} className="animate-spin text-[#D4AF37]" />
+            Thinking…
+          </div>
+        ) : null}
+        <div ref={chatEndRef} />
       </div>
 
+      {suggestions.length ? (
+        <div className="flex flex-wrap gap-1.5 border-t border-white/5 px-3 pt-2">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              disabled={thinking}
+              onClick={() => void handlePrompt(s)}
+              className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] text-[#b8b0a4] transition hover:border-[#D4AF37]/40 hover:text-[#D4AF37] disabled:opacity-50"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <form
-        className="flex gap-2 border-t border-white/10 p-3"
+        className="flex gap-2 p-3"
         onSubmit={(e) => {
           e.preventDefault()
-          handlePrompt(input)
+          void handlePrompt(input)
         }}
       >
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder='Product URL, or “Add emerald green variant”'
-          className="flex-1 rounded-full border border-white/10 bg-black px-4 py-2 text-sm outline-none focus:border-[#D4AF37]/50"
+          disabled={thinking}
+          placeholder='Try “pick bags from library” or “set price to 248”'
+          className="flex-1 rounded-full border border-white/10 bg-black px-4 py-2 text-sm outline-none focus:border-[#D4AF37]/50 disabled:opacity-60"
         />
         <button
           type="submit"
-          className="grid h-10 w-10 place-items-center rounded-full bg-[#D4AF37] text-black transition hover:brightness-110"
+          disabled={thinking || !input.trim()}
+          className="grid h-10 w-10 place-items-center rounded-full bg-[#D4AF37] text-black transition hover:brightness-110 disabled:opacity-50"
         >
           <Send size={16} />
         </button>
@@ -768,6 +845,34 @@ export function AIBuilder({ productId }: { productId?: string }) {
         maxSelect={16}
       />
     </div>
+  )
+}
+
+function ToolChip({
+  onClick,
+  icon,
+  label,
+  accent,
+}: {
+  onClick: () => void
+  icon: ReactNode
+  label: string
+  accent?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider',
+        accent
+          ? 'border-[#D4AF37]/40 text-[#D4AF37]'
+          : 'border-white/15 text-[#b8b0a4]',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 

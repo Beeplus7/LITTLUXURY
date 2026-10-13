@@ -12,22 +12,20 @@ export default function AIPage() {
       <div>
         <h1 className="serif text-3xl">AI Shop Builder</h1>
         <p className="mt-2 max-w-xl text-sm text-[#b8b0a4]">
-          Upload product photos, paste an external product link to extract title /
-          price / images, or chat color variants. Published items update the shop
-          instantly.
+          Chat with the builder: pick media, set titles and prices, analyze
+          product links, and import — in plain language. Published items update
+          the shop instantly.
         </p>
         <div className="mt-6 rounded-2xl border border-white/10 bg-zinc-950 p-5 text-sm text-[#b8b0a4]">
           <p className="text-[11px] uppercase tracking-[0.18em] text-[#D4AF37]">
-            Try
+            Say things like
           </p>
           <ul className="mt-3 list-disc space-y-1 pl-5">
-            <li>Paste a PDP URL → Analyze images + color/size variants</li>
-            <li>
-              Media library → pick Yupoo bags / shoes / sneakers for the draft
-            </li>
-            <li>Toggle which variants to import → Import to catalog</li>
-            <li>Upload photos or an MP4/WebM product video</li>
-            <li>Chat “Add emerald green variant” for quick color SKUs</li>
+            <li>“Pick bags from library”</li>
+            <li>“Call it Noir Fringe” · “Set price to 248”</li>
+            <li>“Write a product description” · “Import to shop”</li>
+            <li>Paste a product URL anytime to analyze variants</li>
+            <li>“Add emerald variant” for a quick color SKU</li>
           </ul>
         </div>
       </div>
