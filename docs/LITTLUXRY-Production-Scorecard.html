@@ -184,7 +184,7 @@
       <div class="brand">
         <div class="mark">LL</div>
         <div class="brand-name">LITT <span>LUXRY</span></div>
-        <span class="badge">SCORECARD · REV 2</span>
+        <span class="badge">SCORECARD · REV 3</span>
       </div>
       <nav class="top-nav">
         <a href="#scorecard">Scorecard</a>
@@ -197,67 +197,67 @@
 
   <div class="wrap">
     <section class="hero">
-      <div class="eyebrow">Artifact · Updated 13 Oct 2026 · 05:02 UTC+1</div>
+      <div class="eyebrow">Artifact · Updated 13 Oct 2026 · 05:51 UTC+1</div>
       <h1>LITTLUXRY production scorecard</h1>
       <p class="lede">
-        Rev 2 after auth wizard, Google OAuth wiring, admin routes, Stripe keys from passport-paper,
-        and confirmed local + VPS HTTP 200. Still soft-launch — not full paid commerce.
+        Rev 3 after public HTTPS, auth on VPS, Google provider + Site URL fix, and OAuth callback
+        origin correction. Soft-launch YES — commerce + catalog persistence still open.
       </p>
       <div class="meta-row">
-        <div class="chip"><span>Rev</span> 2 <span class="delta">↑ from Rev 1 (68)</span></div>
-        <div class="chip"><span>Local</span> http://localhost:3000 · 200</div>
-        <div class="chip"><span>VPS</span> :3020 · Host header 200</div>
-        <div class="chip"><span>Pushed main</span> 870900c (+ local auth unpushed)</div>
+        <div class="chip"><span>Rev</span> 3 <span class="delta">↑ from Rev 2 (76)</span></div>
+        <div class="chip"><span>Live</span> https://litt-luxury.com · 200</div>
+        <div class="chip"><span>VPS</span> PM2 :3020 · SSL LE</div>
+        <div class="chip"><span>main</span> 35fedc3</div>
       </div>
 
       <div class="score-strip">
         <div class="score-card">
           <div class="label">Overall</div>
-          <div class="value">76<span style="font-size:18px;color:#8a8378">/100</span></div>
-          <div class="note">+8 vs Rev 1 · auth + Stripe keys + live view</div>
+          <div class="value">84<span style="font-size:18px;color:#8a8378">/100</span></div>
+          <div class="note">+8 vs Rev 2 · HTTPS + Google + deploy</div>
         </div>
         <div class="score-card">
           <div class="label">Ready</div>
-          <div class="value" style="color:#6fd49a">14</div>
-          <div class="note">Was 12</div>
+          <div class="value" style="color:#6fd49a">16</div>
+          <div class="note">Was 14</div>
         </div>
         <div class="score-card">
           <div class="label">Partial</div>
-          <div class="value">10</div>
-          <div class="note">Google provider + Stripe checkout pending</div>
+          <div class="value">8</div>
+          <div class="note">Stripe checkout · catalog media</div>
         </div>
         <div class="score-card">
           <div class="label">Blocked</div>
           <div class="value" style="color:#f07178">2</div>
-          <div class="note">DNS/SSL · catalog not on Supabase yet</div>
+          <div class="note">Live charge · Supabase catalog</div>
         </div>
       </div>
     </section>
 
     <div class="verdict">
-      <h2>Verdict: Soft-launch YES · Google/DNS before public share</h2>
+      <h2>Verdict: Soft-launch YES · share https://litt-luxury.com</h2>
       <p>
-        Browse locally at <span class="mono">localhost:3000</span> (signup / admin / shop all 200).
-        VPS process still healthy. Finish Google Cloud client + Supabase provider paste, then DNS for
-        <span class="mono">litt-luxury.com</span>, then push auth commits and redeploy.
-        Do not take real payments until Stripe keys are verified as the same account and Checkout Session is wired.
+        Public site is live with TLS. Auth wizard, admin routes, and Google OAuth are deployed;
+        Supabase Site URL is <span class="mono">https://litt-luxury.com</span> (was localhost).
+        Confirm one successful Google login, then move to P2: Stripe Checkout Session + Supabase products/orders.
+        Do not take real payments until pk/sk are the same Stripe account and webhooks are wired.
       </p>
     </div>
 
     <section id="changelog">
       <div class="sec-head">
-        <h2>Delta since Rev 1</h2>
-        <p>What moved the score from 68 → 76.</p>
+        <h2>Delta since Rev 2</h2>
+        <p>What moved the score from 76 → 84.</p>
       </div>
       <div class="panel">
         <ul class="changelog">
-          <li>✅ Customer signup wizard <span class="mono">/signup</span> (4 steps)</li>
-          <li>✅ Admin <span class="mono">/admin/signin</span> · <span class="mono">/admin/signup</span> (invite LITTLUXRY-OWNER)</li>
-          <li>✅ Supabase Auth client + <span class="mono">/auth/callback</span> + Google button UI</li>
-          <li>✅ Stripe test keys imported from passport-paper into <span class="mono">.env.local</span></li>
-          <li>✅ Local web available (dev server 200 on /, /signup, /admin/signin)</li>
-          <li>⚠️ Google OAuth: URIs documented — client Create + Supabase paste still operator step</li>
-          <li>⚠️ Auth/Stripe work largely local — push + VPS redeploy not done for this rev</li>
+          <li>✅ Auth + Google button pushed and redeployed (main @ <span class="mono">35fedc3</span>)</li>
+          <li>✅ Let’s Encrypt on <span class="mono">litt-luxury.com</span> + www · nginx + PM2 healthy</li>
+          <li>✅ Supabase Google provider enabled; Client ID/Secret re-synced via Management API</li>
+          <li>✅ Supabase Site URL + redirect allow-list set to production (fixed localhost bounce)</li>
+          <li>✅ OAuth callback uses <span class="mono">NEXT_PUBLIC_SITE_URL</span> (no more <span class="mono">localhost:3020</span> redirects)</li>
+          <li>⚠️ Stripe Checkout Session / webhooks still not wired</li>
+          <li>⚠️ Products still localStorage / <span class="mono">products.ts</span> — not Supabase tables</li>
         </ul>
       </div>
     </section>
@@ -281,13 +281,13 @@
             <td>App foundation</td>
             <td><span class="status ready"><span class="dot"></span>READY</span></td>
             <td class="mono">10/10</td>
-            <td>Next 14 App Router, gold/ink design system, production build green.</td>
+            <td>Next 14 App Router, gold/ink design system, production build green on VPS.</td>
           </tr>
           <tr>
             <td>Homepage / hero / video</td>
             <td><span class="status ready"><span class="dot"></span>READY</span></td>
             <td class="mono">9/10</td>
-            <td>Hero video + categories strip + featured collection.</td>
+            <td>Hero video + categories strip + featured collection live.</td>
           </tr>
           <tr>
             <td>Shop + categories</td>
@@ -310,14 +310,14 @@
           <tr>
             <td>Customer auth + signup wizard</td>
             <td><span class="status ready"><span class="dot"></span>READY</span></td>
-            <td class="mono">8/10</td>
-            <td><span class="mono">/signup</span> wizard + email/password via Supabase; demo fallback intact.</td>
+            <td class="mono">9/10</td>
+            <td><span class="mono">/signup</span> wizard + email/password via Supabase on production.</td>
           </tr>
           <tr>
             <td>Google sign-in</td>
-            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
-            <td class="mono">5/10</td>
-            <td>UI + callback ready. Needs Google client Create + Supabase provider secrets.</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">8/10</td>
+            <td>Provider on · Site URL production · secret re-synced · authorize → Google. Confirm one end-to-end login.</td>
           </tr>
           <tr>
             <td>Admin auth</td>
@@ -335,7 +335,7 @@
             <td>Stripe credentials</td>
             <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
             <td class="mono">5/10</td>
-            <td>Keys in <span class="mono">.env.local</span> from passport-paper. pk + sk may be different accounts — verify. No Checkout Session yet.</td>
+            <td>Keys in <span class="mono">.env.local</span> (synced to VPS). pk + sk may be different accounts — verify. No Checkout Session yet.</td>
           </tr>
           <tr>
             <td>Payments live charge</td>
@@ -347,7 +347,7 @@
             <td>Data layer (Supabase catalog)</td>
             <td><span class="status blocked"><span class="dot"></span>BLOCKED</span></td>
             <td class="mono">3/10</td>
-            <td>Auth wired to Supabase; products still localStorage / products.ts.</td>
+            <td>Auth on Supabase; products still localStorage / products.ts.</td>
           </tr>
           <tr>
             <td>Catalog media</td>
@@ -389,13 +389,13 @@
             <td>Local preview</td>
             <td><span class="status ready"><span class="dot"></span>READY</span></td>
             <td class="mono">10/10</td>
-            <td>Dev server live — home / signup / admin 200.</td>
+            <td>Dev server path intact — prefer live domain for OAuth tests.</td>
           </tr>
           <tr>
-            <td>GitHub sync of latest auth</td>
-            <td><span class="status partial"><span class="dot"></span>PARTIAL</span></td>
-            <td class="mono">5/10</td>
-            <td>Storefront on main @ 870900c. Auth/Stripe rev still local until push + redeploy.</td>
+            <td>GitHub + VPS sync</td>
+            <td><span class="status ready"><span class="dot"></span>READY</span></td>
+            <td class="mono">10/10</td>
+            <td>main @ <span class="mono">35fedc3</span> deployed; env synced for Supabase/Stripe.</td>
           </tr>
         </tbody>
       </table>
@@ -404,7 +404,7 @@
     <section id="phases">
       <div class="sec-head">
         <h2>Production phases</h2>
-        <p>P0 done · P1 in progress (auth/Google/DNS).</p>
+        <p>P0–P1 done · P2 next (payments + durable catalog).</p>
       </div>
       <div class="phases">
         <article class="phase">
@@ -418,19 +418,19 @@
           </div>
         </article>
         <article class="phase">
-          <div class="phase-rail"><div class="num">P1</div><div class="gate">NOW</div></div>
+          <div class="phase-rail"><div class="num">P1</div><div class="gate">DONE</div></div>
           <div class="phase-body">
             <h3>Auth + public URL</h3>
             <p class="goal">Real accounts + shareable HTTPS.</p>
             <ul>
-              <li>Create Google OAuth client (URIs in docs/GOOGLE-OAUTH-SETUP.md)</li>
-              <li>Paste Client ID/Secret into Supabase Google provider</li>
-              <li>DNS A → 87.106.103.43 · certbot · push auth · redeploy VPS</li>
+              <li>Google OAuth client + Supabase provider + Site URL production</li>
+              <li>DNS A → 87.106.103.43 · certbot · auth on VPS</li>
+              <li>Callback origin fix for nginx → public domain</li>
             </ul>
           </div>
         </article>
         <article class="phase">
-          <div class="phase-rail"><div class="num">P2</div><div class="gate">NEXT</div></div>
+          <div class="phase-rail"><div class="num">P2</div><div class="gate">NOW</div></div>
           <div class="phase-body">
             <h3>Real commerce</h3>
             <p class="goal">Paid orders with durable state.</p>
@@ -446,7 +446,7 @@
             <h3>Hardening + native</h3>
             <p class="goal">Operate like a brand.</p>
             <ul>
-              <li>CI, Sentry, uptime · Expo app · custom domain</li>
+              <li>CI, Sentry, uptime · Expo app · richer category media</li>
             </ul>
           </div>
         </article>
@@ -455,47 +455,47 @@
 
     <section class="grid-2">
       <div class="panel">
-        <h3>Top risks (Rev 2)</h3>
+        <h3>Top risks (Rev 3)</h3>
         <ol>
-          <li>Google button will fail until Cloud client + Supabase provider are completed.</li>
-          <li>Stripe pk_test_51NgGiO… and sk_test_51TyEpW… look like different accounts.</li>
-          <li>Auth changes not on VPS until push/redeploy.</li>
+          <li>Stripe pk_test_51NgGiO… and sk_test_51TyEpW… may be different accounts.</li>
+          <li>No Checkout Session / webhooks — checkout is still simulated.</li>
           <li>Catalog still browser-local — clears with site data.</li>
+          <li>Google consent screen still in Testing → add test users if login denied for others.</li>
         </ol>
       </div>
       <div class="panel">
         <h3>Immediate next actions</h3>
         <ol>
-          <li>Finish Google Create with documented URIs</li>
-          <li>Enable Supabase Google provider</li>
-          <li>Push main + <span class="mono">bash scripts/deploy-vps.sh</span></li>
-          <li>DNS for litt-luxury.com</li>
-          <li>Verify Stripe account match → Checkout</li>
+          <li>Confirm one Google login on https://litt-luxury.com/signin</li>
+          <li>Verify Stripe pk + sk same account</li>
+          <li>Wire Stripe Checkout Session + webhook</li>
+          <li>Migrate products/orders to Supabase</li>
         </ol>
       </div>
     </section>
 
     <section id="probe">
       <div class="sec-head">
-        <h2>Live probe (Rev 2)</h2>
-        <p>Checked ~05:02 local · VPS Host header.</p>
+        <h2>Live probe (Rev 3)</h2>
+        <p>Checked ~05:51 local · public HTTPS + Supabase auth settings.</p>
       </div>
       <table class="score">
         <thead>
           <tr><th>Target</th><th>Result</th><th>Notes</th></tr>
         </thead>
         <tbody>
-          <tr><td class="mono">localhost:3000/</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Local latest</td></tr>
-          <tr><td class="mono">localhost:3000/signup</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Wizard</td></tr>
-          <tr><td class="mono">localhost:3000/admin/signin</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Admin</td></tr>
-          <tr><td class="mono">VPS Host litt-luxury.com/</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Pre-auth deploy</td></tr>
-          <tr><td class="mono">https://litt-luxury.com</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Main domain + SSL</td></tr>
+          <tr><td class="mono">https://litt-luxury.com/</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Public home</td></tr>
+          <tr><td class="mono">https://litt-luxury.com/shop</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Catalog</td></tr>
+          <tr><td class="mono">https://litt-luxury.com/admin/signin</td><td><span class="status ready"><span class="dot"></span>200</span></td><td>Admin auth</td></tr>
+          <tr><td class="mono">https://litt-luxury.com/auth/callback</td><td><span class="status ready"><span class="dot"></span>302→domain</span></td><td>No localhost leak</td></tr>
+          <tr><td class="mono">Supabase Google provider</td><td><span class="status ready"><span class="dot"></span>ON</span></td><td>Site URL = litt-luxury.com</td></tr>
+          <tr><td class="mono">VPS PM2 littluxry-web</td><td><span class="status ready"><span class="dot"></span>online</span></td><td>:3020 behind nginx</td></tr>
         </tbody>
       </table>
     </section>
 
     <footer>
-      <div>LITTLUXRY · Production Scorecard Rev 2 · Oct 13, 2026</div>
+      <div>LITTLUXRY · Production Scorecard Rev 3 · Oct 13, 2026</div>
       <div class="mono">docs/LITTLUXRY-Production-Scorecard.html</div>
     </footer>
   </div>
