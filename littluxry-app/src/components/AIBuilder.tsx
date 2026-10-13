@@ -6,6 +6,7 @@ import {
   Send,
   Link2,
   ImagePlus,
+  Film,
   Loader2,
   Trash2,
   PackagePlus,
@@ -18,7 +19,7 @@ import {
   type ExtractedProduct,
   type ExtractedVariant,
 } from '@/lib/extractProduct'
-import { readImageAsDataUrl } from '@/lib/readImageFile'
+import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
 import { cn } from '@/lib/cn'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
@@ -44,13 +45,21 @@ type Draft = {
   price: number
   sourceUrl?: string
   images: string[]
+  video?: string | null
   brand?: string | null
   variants: ExtractedVariant[]
   analysisNote?: string
 }
 
 function emptyDraft(): Draft {
-  return { title: '', description: '', price: 198, images: [], variants: [] }
+  return {
+    title: '',
+    description: '',
+    price: 198,
+    images: [],
+    video: null,
+    variants: [],
+  }
 }
 
 export function AIBuilder({ productId }: { productId?: string }) {
@@ -58,15 +67,17 @@ export function AIBuilder({ productId }: { productId?: string }) {
     useProducts()
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
   const [input, setInput] = useState('')
   const [link, setLink] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingVideo, setUploadingVideo] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      text: 'AI Shop Builder ready. Paste a product URL — I’ll analyze images & variants for import. You can also upload photos or ask for a color variant.',
+      text: 'AI Shop Builder ready. Paste a product URL — I’ll analyze images & variants. Upload photos or a product video (MP4/WebM), or ask for a color variant.',
     },
   ])
 
@@ -222,6 +233,35 @@ export function AIBuilder({ productId }: { productId?: string }) {
     }
   }
 
+  async function onUploadVideo(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+    setUploadingVideo(true)
+    try {
+      const dataUrl = await readVideoAsDataUrl(file)
+      setDraft((prev) => {
+        const base = prev ?? emptyDraft()
+        return {
+          ...base,
+          title: base.title || fileTitle(file),
+          video: dataUrl,
+        }
+      })
+      push(
+        'assistant',
+        `Video “${file.name}” attached (${(file.size / (1024 * 1024)).toFixed(1)}MB). It will save on the product when you Import.`,
+      )
+      toast('Video uploaded')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Video upload failed'
+      toast(msg)
+      push('assistant', msg)
+    } finally {
+      setUploadingVideo(false)
+      if (videoRef.current) videoRef.current.value = ''
+    }
+  }
+
   function toggleVariant(id: string) {
     setDraft((d) => {
       if (!d) return d
@@ -248,8 +288,8 @@ export function AIBuilder({ productId }: { productId?: string }) {
       toast('Add a product title')
       return
     }
-    if (!draft.images.length) {
-      toast('Add at least one image (upload or extract)')
+    if (!draft.images.length && !draft.video) {
+      toast('Add at least one image or video')
       return
     }
 
@@ -274,22 +314,31 @@ export function AIBuilder({ productId }: { productId?: string }) {
       },
     }
     const product = productFromExtract(extracted, {
-      localImages: draft.images,
+      localImages: draft.images.length
+        ? draft.images
+        : ['/assets/fringe-hero.png'],
       selectedVariantIds: selectedIds.length ? selectedIds : undefined,
+      video: draft.video,
     })
     addProduct(product)
     push(
       'assistant',
-      `Imported “${product.name}” with ${product.images.length} image(s) and ${product.variants.length} variant(s). Live in Shop & Products.`,
+      `Imported “${product.name}” with ${product.images.length} image(s), ${product.variants.length} variant(s)${
+        product.video ? ', and a product video' : ''
+      }. Live in Shop & Products.`,
     )
-    toast(`Imported ${product.variants.length} variants`)
+    toast(
+      product.video
+        ? `Imported ${product.variants.length} variants + video`
+        : `Imported ${product.variants.length} variants`,
+    )
     setDraft(null)
     setLink('')
   }
 
   function attachImagesToSelected() {
-    if (!draft?.images.length) {
-      toast('Upload or extract images first')
+    if (!draft?.images.length && !draft?.video) {
+      toast('Upload images or a video first')
       return
     }
     const targetId =
@@ -299,10 +348,13 @@ export function AIBuilder({ productId }: { productId?: string }) {
     if (!targetId) return
     const product = getProduct(targetId)
     if (!product) return
-    const images = [...draft.images, ...product.images].filter(
+    const images = [...(draft.images ?? []), ...product.images].filter(
       (v, i, a) => a.indexOf(v) === i,
     )
-    const selectedVars = draft.variants.filter((v) => v.selected !== false)
+    if (draft.video && !images.includes(draft.video)) images.push(draft.video)
+    const selectedVars = (draft.variants ?? []).filter(
+      (v) => v.selected !== false,
+    )
     for (const v of selectedVars) {
       addVariant(targetId, {
         id: `${targetId}-${v.id}`,
@@ -314,10 +366,15 @@ export function AIBuilder({ productId }: { productId?: string }) {
         image: v.image || draft.images[0],
       })
     }
-    updateProduct(targetId, { images })
+    updateProduct(targetId, {
+      images,
+      ...(draft.video ? { video: draft.video } : {}),
+    })
     push(
       'assistant',
       `Attached ${draft.images.length} image(s)${
+        draft.video ? ' + video' : ''
+      }${
         selectedVars.length ? ` + ${selectedVars.length} variant(s)` : ''
       } to ${product.menuLabel}.`,
     )
@@ -385,7 +442,27 @@ export function AIBuilder({ productId }: { productId?: string }) {
             )}
             Upload images
           </button>
-          {draft?.images.length ? (
+          <input
+            ref={videoRef}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+            className="hidden"
+            onChange={(e) => void onUploadVideo(e.target.files)}
+          />
+          <button
+            type="button"
+            disabled={uploadingVideo}
+            onClick={() => videoRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider disabled:opacity-50"
+          >
+            {uploadingVideo ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Film size={14} />
+            )}
+            Upload video
+          </button>
+          {draft?.images.length || draft?.video ? (
             <button
               type="button"
               onClick={attachImagesToSelected}
@@ -430,12 +507,40 @@ export function AIBuilder({ productId }: { productId?: string }) {
                 className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
               />
             ))}
-            {!draft.images.length ? (
+            {draft.video ? (
+              <video
+                src={draft.video}
+                muted
+                playsInline
+                className="h-14 w-20 shrink-0 rounded-lg object-cover ring-1 ring-[#D4AF37]/50"
+              />
+            ) : null}
+            {!draft.images.length && !draft.video ? (
               <div className="grid h-14 w-14 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4]">
-                No img
+                No media
               </div>
             ) : null}
           </div>
+
+          {draft.video ? (
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
+              <video
+                src={draft.video}
+                controls
+                playsInline
+                className="max-h-40 w-full object-contain"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft((d) => (d ? { ...d, video: null } : d))
+                }
+                className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] uppercase tracking-wider text-white"
+              >
+                Remove video
+              </button>
+            </div>
+          ) : null}
 
           <div className="grid gap-2">
             <input
@@ -545,6 +650,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
             {(selectedCount || 1) === 1 ? '' : 's'} · {draft.images.length}{' '}
             image
             {draft.images.length === 1 ? '' : 's'}
+            {draft.video ? ' · video' : ''}
           </button>
           {draft.sourceUrl ? (
             <p className="truncate text-[11px] text-[#6a655c]">

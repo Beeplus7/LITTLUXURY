@@ -36,3 +36,42 @@ export async function readImageAsDataUrl(
   }
   return dataUrl
 }
+
+const VIDEO_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/x-m4v',
+])
+
+/** Read a short product video as a data URL (kept small for localStorage catalog). */
+export async function readVideoAsDataUrl(
+  file: File,
+  opts?: { maxBytes?: number },
+): Promise<string> {
+  const maxBytes = opts?.maxBytes ?? 8_000_000
+  if (!file.type.startsWith('video/') && !VIDEO_TYPES.has(file.type)) {
+    throw new Error('Please choose a video file (MP4 or WebM)')
+  }
+  if (file.type && !VIDEO_TYPES.has(file.type) && file.type !== 'video/ogg') {
+    throw new Error('Use MP4 or WebM for best playback')
+  }
+  if (file.size > maxBytes) {
+    throw new Error('Video is too large (max ~8MB for catalog storage)')
+  }
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result)
+      else reject(new Error('Could not read video'))
+    }
+    reader.onerror = () => reject(new Error('Could not read video'))
+    reader.readAsDataURL(file)
+  })
+
+  if (dataUrl.length > 12_000_000) {
+    throw new Error('Video data is too large — try a shorter/compressed clip')
+  }
+  return dataUrl
+}

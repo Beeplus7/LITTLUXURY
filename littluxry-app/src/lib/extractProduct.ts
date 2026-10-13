@@ -168,10 +168,14 @@ export function variantsFromExtract(
   return { variants, colors }
 }
 
-/** Build a catalog Product from extracted link metadata + optional local images. */
+/** Build a catalog Product from extracted link metadata + optional local media. */
 export function productFromExtract(
   extract: ExtractedProduct,
-  extras?: { localImages?: string[]; selectedVariantIds?: string[] },
+  extras?: {
+    localImages?: string[]
+    selectedVariantIds?: string[]
+    video?: string | null
+  },
 ): Product {
   const title = extract.title.trim() || 'Imported product'
   const slug = slugify(title)
@@ -198,6 +202,12 @@ export function productFromExtract(
   }
 
   const { variants, colors } = variantsFromExtract(withSelection, id, price)
+  const video = extras?.video || undefined
+  const imageList = images.length ? images.slice(0, 16) : ['/assets/fringe-hero.png']
+  // Keep hero video discoverable in the media strip when present
+  if (video && !imageList.includes(video)) {
+    imageList.push(video)
+  }
 
   return {
     id,
@@ -215,15 +225,18 @@ export function productFromExtract(
     features: [
       extract.brand ? `Brand: ${extract.brand}` : 'Imported via AI Builder',
       `Source: ${extract.url}`,
-      `${images.length} image(s) · ${variants.length} variant(s)`,
+      `${images.length} image(s) · ${variants.length} variant(s)${
+        video ? ' · video' : ''
+      }`,
       'Review pricing & stock before publish campaigns',
     ].filter(Boolean),
-    images: images.length ? images.slice(0, 16) : ['/assets/fringe-hero.png'],
+    images: imageList,
     gradient: 'from-[#1a1a1a] via-[#2a2a2a] to-[#0a0a0a]',
     category: productLine,
     productLine,
     shopCategory,
     variants,
+    video,
   }
 }
 

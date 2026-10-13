@@ -23,7 +23,8 @@ export default function AIPage() {
           <ul className="mt-3 list-disc space-y-1 pl-5">
             <li>Paste a PDP URL → Analyze images + color/size variants</li>
             <li>Toggle which variants to import → Import to catalog</li>
-            <li>Upload your own photos, or chat “Add emerald green variant”</li>
+            <li>Upload photos or an MP4/WebM product video</li>
+            <li>Chat “Add emerald green variant” for quick color SKUs</li>
           </ul>
         </div>
       </div>
