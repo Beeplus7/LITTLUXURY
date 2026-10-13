@@ -105,6 +105,7 @@ server {
     listen [::]:80;
     server_name ${DOMAIN} ${DOMAIN_WWW};
     client_max_body_size 32m;
+    large_client_header_buffers 4 32k;
     location / {
         proxy_pass http://127.0.0.1:${WEB_PORT};
         proxy_http_version 1.1;
@@ -115,10 +116,38 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
+        # Supabase auth Set-Cookie headers are large — avoid 502 "upstream sent too big header"
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+        proxy_temp_file_write_size 256k;
     }
 }
 EOF
   ln -sfn /etc/nginx/sites-available/littluxry /etc/nginx/sites-enabled/littluxry
+elif ! grep -q 'proxy_buffer_size' /etc/nginx/sites-available/littluxry; then
+  # Patch live SSL site once if buffers missing
+  python3 - <<'PY'
+from pathlib import Path
+p = Path('/etc/nginx/sites-available/littluxry')
+t = p.read_text()
+if 'proxy_buffer_size' not in t:
+    t = t.replace(
+        'client_max_body_size 32m;',
+        'client_max_body_size 32m;\n    large_client_header_buffers 4 32k;',
+        1,
+    )
+    needle = 'proxy_cache_bypass $http_upgrade;'
+    bump = '''proxy_cache_bypass $http_upgrade;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+        proxy_temp_file_write_size 256k;'''
+    if needle in t:
+        t = t.replace(needle, bump, 1)
+    p.write_text(t)
+    print('Patched nginx proxy buffers for OAuth cookies')
+PY
 fi
 
 nginx -t
