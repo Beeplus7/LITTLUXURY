@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a0a0a;
+  --bg-soft: #111111;
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f5f0e8;
+  --text-muted: #b8b0a4;
+  --gold: #d4af37;
+  --safe-area-inset-top: env(safe-area-inset-top);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+}
+
+.serif {
+  font-family: var(--font-playfair), 'Playfair Display', Georgia, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(212, 175, 55, 0.35);
+  color: #fff;
+}
+
+.marquee {
+  animation: marquee 28s linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.skeleton {
+  @apply animate-pulse rounded-2xl bg-zinc-800/80;
+}

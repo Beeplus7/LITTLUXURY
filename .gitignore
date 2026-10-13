@@ -46,3 +46,9 @@ android/.gradle/
 # Supabase local
 supabase/.branches
 supabase/.temp
+
+# Local extract / heavy artifacts
+_extract/
+littluxry-app/foundations/
+littluxry-app/.next/
+littluxry-app/node_modules/

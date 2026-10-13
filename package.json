@@ -8,9 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:web": "npm run dev --workspace=@littluxury/web",
+    "dev": "npm run dev --prefix littluxry-app",
+    "build": "npm run build --prefix littluxry-app",
+    "dev:web": "npm run dev --prefix littluxry-app",
     "dev:mobile": "npm run start --workspace=@littluxury/mobile",
-    "build:web": "npm run build --workspace=@littluxury/web",
+    "build:web": "npm run build --prefix littluxry-app",
     "lint": "npm run lint --workspaces --if-present"
   },
   "engines": {
