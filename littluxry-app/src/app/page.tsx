@@ -41,7 +41,9 @@ export default function HomePage() {
     return () => window.clearInterval(id)
   }, [])
 
-  const featured = products.filter(isPublishedProduct).slice(0, 7)
+  const published = products.filter(isPublishedProduct)
+  const featured = published.slice(0, 7)
+  const wornByYou = published.slice(0, 8)
 
   return (
     <div>
@@ -238,20 +240,35 @@ export default function HomePage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-5 py-16 md:px-10">
-        <h2 className="serif mb-6 text-3xl">Worn by you</h2>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {['/assets/rosso-1.jpg', '/assets/riviera-1.jpg', '/assets/rosso-2.jpg', '/assets/fringe-hero.png'].map(
-            (src) => (
-              <div
-                key={src}
-                className="aspect-square overflow-hidden rounded-2xl border border-white/10"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" className="h-full w-full object-cover" />
-              </div>
-            ),
-          )}
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[#D4AF37]">
+              Community
+            </p>
+            <h2 className="serif text-3xl">Worn by you</h2>
+          </div>
+          <Link
+            href="/shop"
+            className="text-[12px] uppercase tracking-[0.16em] text-[#b8b0a4] hover:text-[#D4AF37]"
+          >
+            Shop all
+          </Link>
         </div>
+        {wornByYou.length ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+            {wornByYou.map((p) => (
+              <ProductCard
+                key={`worn-${p.id}`}
+                product={p}
+                className="min-w-0 w-full"
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-white/10 bg-zinc-950 px-5 py-10 text-center text-sm text-[#b8b0a4]">
+            Publish products in the admin to show them here.
+          </p>
+        )}
       </section>
 
       <section className="mx-auto max-w-3xl px-5 pb-20 text-center md:px-10">
