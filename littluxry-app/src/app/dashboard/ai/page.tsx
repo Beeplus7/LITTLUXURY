@@ -22,6 +22,9 @@ export default function AIPage() {
           </p>
           <ul className="mt-3 list-disc space-y-1 pl-5">
             <li>Paste a PDP URL → Analyze images + color/size variants</li>
+            <li>
+              Media library → pick Yupoo bags / shoes / sneakers for the draft
+            </li>
             <li>Toggle which variants to import → Import to catalog</li>
             <li>Upload photos or an MP4/WebM product video</li>
             <li>Chat “Add emerald green variant” for quick color SKUs</li>

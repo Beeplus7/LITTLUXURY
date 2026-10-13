@@ -10,6 +10,8 @@ import {
   Loader2,
   Trash2,
   PackagePlus,
+  Library,
+  X,
 } from 'lucide-react'
 import { useProducts } from '@/context/ProductsContext'
 import { useToast } from '@/lib/toast'
@@ -20,6 +22,8 @@ import {
   type ExtractedVariant,
 } from '@/lib/extractProduct'
 import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
+import { MediaPickerModal } from '@/components/MediaPickerModal'
+import type { MediaItem } from '@/data/media'
 import { cn } from '@/lib/cn'
 
 type Msg = { role: 'user' | 'assistant'; text: string }
@@ -74,10 +78,11 @@ export function AIBuilder({ productId }: { productId?: string }) {
   const [uploading, setUploading] = useState(false)
   const [uploadingVideo, setUploadingVideo] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: 'assistant',
-      text: 'AI Shop Builder ready. Paste a product URL — I’ll analyze images & variants. Upload photos or a product video (MP4/WebM), or ask for a color variant.',
+      text: 'AI Shop Builder ready. Paste a product URL, pick images from Media Library, upload photos/video, or ask for a color variant.',
     },
   ])
 
@@ -262,6 +267,44 @@ export function AIBuilder({ productId }: { productId?: string }) {
     }
   }
 
+  function addFromLibrary(items: MediaItem[]) {
+    if (!items.length) return
+    const images = items.filter((m) => m.type === 'image').map((m) => m.src)
+    const video = items.find((m) => m.type === 'video')?.src
+    const labelHint = items[0]?.label ?? 'Library pick'
+
+    setDraft((prev) => {
+      const base = prev ?? emptyDraft()
+      return {
+        ...base,
+        title: base.title || labelHint.replace(/[-_]+/g, ' ').trim(),
+        images: [...base.images, ...images]
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .slice(0, 16),
+        video: video ?? base.video,
+      }
+    })
+    setLibraryOpen(false)
+    const parts = [
+      images.length
+        ? `${images.length} image${images.length === 1 ? '' : 's'}`
+        : null,
+      video ? '1 video' : null,
+    ].filter(Boolean)
+    push(
+      'assistant',
+      `Added ${parts.join(' + ')} from Media Library. Edit the draft, then Import.`,
+    )
+    toast(`Added ${parts.join(' + ')} from library`)
+  }
+
+  function removeDraftImage(index: number) {
+    setDraft((d) => {
+      if (!d) return d
+      return { ...d, images: d.images.filter((_, i) => i !== index) }
+    })
+  }
+
   function toggleVariant(id: string) {
     setDraft((d) => {
       if (!d) return d
@@ -442,6 +485,14 @@ export function AIBuilder({ productId }: { productId?: string }) {
             )}
             Upload images
           </button>
+          <button
+            type="button"
+            onClick={() => setLibraryOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF37]"
+          >
+            <Library size={14} />
+            Media library
+          </button>
           <input
             ref={videoRef}
             type="file"
@@ -499,13 +550,22 @@ export function AIBuilder({ productId }: { productId?: string }) {
 
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {draft.images.slice(0, 12).map((src, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={src}
-                alt=""
-                className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-white/10"
-              />
+              <div key={`${src}-${i}`} className="relative shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt=""
+                  className="h-14 w-14 rounded-lg object-cover ring-1 ring-white/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeDraftImage(i)}
+                  className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-black/80 text-white ring-1 ring-white/20"
+                  aria-label="Remove image"
+                >
+                  <X size={10} />
+                </button>
+              </div>
             ))}
             {draft.video ? (
               <video
@@ -516,9 +576,13 @@ export function AIBuilder({ productId }: { productId?: string }) {
               />
             ) : null}
             {!draft.images.length && !draft.video ? (
-              <div className="grid h-14 w-14 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4]">
-                No media
-              </div>
+              <button
+                type="button"
+                onClick={() => setLibraryOpen(true)}
+                className="grid h-14 w-14 place-items-center rounded-lg bg-zinc-900 text-[10px] text-[#b8b0a4] ring-1 ring-dashed ring-white/15 hover:text-[#D4AF37]"
+              >
+                Pick
+              </button>
             ) : null}
           </div>
 
@@ -696,6 +760,13 @@ export function AIBuilder({ productId }: { productId?: string }) {
           <Send size={16} />
         </button>
       </form>
+
+      <MediaPickerModal
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onConfirm={addFromLibrary}
+        maxSelect={16}
+      />
     </div>
   )
 }
