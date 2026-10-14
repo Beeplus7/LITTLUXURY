@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Library, Play, Search, X } from 'lucide-react'
 import { mediaLibrary, type MediaItem } from '@/data/media'
+import { getUserMediaLibrary } from '@/lib/userMediaLibrary'
+import { ProductMedia } from '@/components/ProductMedia'
 import { cn } from '@/lib/cn'
 
 type Filter =
@@ -43,13 +45,17 @@ export function MediaPickerModal({
   onClose,
   onConfirm,
   allowVideo = true,
-  maxSelect = 16,
+  maxSelect = 24,
   title = 'Pick from Media Library',
 }: Props) {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [library, setLibrary] = useState<MediaItem[]>(() => [
+    ...getUserMediaLibrary(),
+    ...mediaLibrary,
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -57,6 +63,7 @@ export function MediaPickerModal({
     setQuery('')
     setFilter('all')
     setVisibleCount(PAGE_SIZE)
+    setLibrary([...getUserMediaLibrary(), ...mediaLibrary])
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -66,7 +73,7 @@ export function MediaPickerModal({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return mediaLibrary.filter((m) => {
+    return library.filter((m) => {
       if (!allowVideo && m.type === 'video') return false
       if (filter === 'bags' && !m.tags?.includes('bags')) return false
       if (filter === 'shoes' && !m.tags?.includes('shoes')) return false
@@ -79,12 +86,12 @@ export function MediaPickerModal({
       const hay = `${m.label} ${(m.tags || []).join(' ')}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [filter, query, allowVideo])
+  }, [filter, query, allowVideo, library])
 
   const visible = filtered.slice(0, visibleCount)
   const selectedItems = useMemo(
-    () => mediaLibrary.filter((m) => selected.has(m.id)),
-    [selected],
+    () => library.filter((m) => selected.has(m.id)),
+    [selected, library],
   )
 
   function toggle(id: string) {
@@ -192,28 +199,22 @@ export function MediaPickerModal({
                     )}
                   >
                     <div className="relative aspect-square">
+                      <ProductMedia
+                        src={m.src}
+                        alt={m.label}
+                        thumb
+                        autoPlay={false}
+                        className="h-full w-full"
+                      />
                       {m.type === 'video' ? (
-                        <>
-                          <video
-                            src={m.src}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="h-full w-full object-cover"
+                        <span className="pointer-events-none absolute inset-0 grid place-items-center bg-black/20">
+                          <Play
+                            size={14}
+                            className="text-white"
+                            fill="currentColor"
                           />
-                          <span className="absolute inset-0 grid place-items-center bg-black/20">
-                            <Play size={14} className="text-white" fill="currentColor" />
-                          </span>
-                        </>
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={m.src}
-                          alt={m.label}
-                          loading="lazy"
-                          className="h-full w-full object-cover"
-                        />
-                      )}
+                        </span>
+                      ) : null}
                       <span
                         className={cn(
                           'absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[10px]',

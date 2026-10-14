@@ -16,7 +16,10 @@ import {
   type Product,
   type ProductVariant,
 } from '@/data/products'
-import { isLocalMediaRef } from '@/lib/localMediaStore'
+import {
+  isLocalMediaRef,
+  persistInlineMediaSrcs,
+} from '@/lib/localMediaStore'
 
 type ProductsContextValue = {
   products: Product[]
@@ -88,19 +91,25 @@ function isDataUrl(src: string | undefined): boolean {
 }
 
 /** Drop oversized data-URL media so the catalog fits in localStorage.
- *  Keeps library paths and IndexedDB local-media refs. */
+ *  Keeps library paths and IndexedDB local-media refs.
+ *  Does NOT invent seed/default images for products that had custom media. */
 function stripHeavyMedia(products: Product[]): Product[] {
   return products.map((p) => {
-    const images = (p.images ?? [])
+    const kept = (p.images ?? [])
       .filter((src) => !isDataUrl(src) || isLocalMediaRef(src))
       .slice(0, 24)
     const video =
-      p.video && (isDataUrl(p.video) && !isLocalMediaRef(p.video))
+      p.video && isDataUrl(p.video) && !isLocalMediaRef(p.video)
         ? undefined
         : p.video
+    const images = kept.length
+      ? kept
+      : video
+        ? [video]
+        : [PLACEHOLDER_IMAGE]
     return {
       ...p,
-      images: images.length ? images : [PLACEHOLDER_IMAGE],
+      images,
       video,
     }
   })
@@ -147,14 +156,49 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const skipNextPersistRef = useRef(false)
 
   useEffect(() => {
-    try {
-      const removed = readRemovedIds()
-      removedIdsRef.current = removed
-      setProductsState(mergeCatalog(readStoredProducts(), removed))
-    } catch {
-      setProductsState(initialProducts)
+    let cancelled = false
+    async function hydrate() {
+      try {
+        const removed = readRemovedIds()
+        removedIdsRef.current = removed
+        const merged = mergeCatalog(readStoredProducts(), removed)
+        // Migrate any legacy data-URL product images into IndexedDB
+        const migrated = await Promise.all(
+          merged.map(async (p) => {
+            const needs =
+              (p.images ?? []).some(
+                (src) => src.startsWith('data:') && !isLocalMediaRef(src),
+              ) ||
+              Boolean(
+                p.video?.startsWith('data:') && !isLocalMediaRef(p.video),
+              )
+            if (!needs) return p
+            const images = await persistInlineMediaSrcs(p.images ?? [])
+            let video = p.video
+            if (video?.startsWith('data:') && !isLocalMediaRef(video)) {
+              const [v] = await persistInlineMediaSrcs([video])
+              video = v || undefined
+            }
+            return {
+              ...p,
+              images: images.length ? images : p.images,
+              video,
+            }
+          }),
+        )
+        if (!cancelled) {
+          skipNextPersistRef.current = false
+          setProductsState(migrated)
+        }
+      } catch {
+        if (!cancelled) setProductsState(initialProducts)
+      }
+      if (!cancelled) setHydrated(true)
     }
-    setHydrated(true)
+    void hydrate()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {

@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import type { Product } from '@/data/products'
+import { ProductMedia } from '@/components/ProductMedia'
 import { useCart } from '@/context/CartContext'
+import { isVideoSrc } from '@/lib/localMediaStore'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -34,9 +36,7 @@ export function ProductCard({ product, className }: Props) {
   const images = product.images ?? []
   const colors = product.colors ?? []
   const image =
-    images.find(
-      (i) => !i.endsWith('.mp4') && !i.startsWith('data:video'),
-    ) ?? images[0]
+    images.find((i) => !isVideoSrc(i)) ?? images[0]
 
   return (
     <div
@@ -54,14 +54,11 @@ export function ProductCard({ product, className }: Props) {
             product.gradient || 'from-zinc-900 to-black',
           )}
         >
-          {image &&
-          !image.endsWith('.mp4') &&
-          !image.startsWith('data:video') ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+          {image ? (
+            <ProductMedia
               src={image}
               alt={product.name}
-              className="h-full w-full object-cover opacity-90 transition duration-500 group-hover:scale-105"
+              className="h-full w-full opacity-90 transition duration-500 group-hover:scale-105"
             />
           ) : null}
           <div className="absolute bottom-3 left-3 flex gap-1.5">

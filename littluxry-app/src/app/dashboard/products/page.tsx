@@ -31,8 +31,13 @@ import { SHOP_CATEGORIES, type ShopCategoryId } from '@/data/categories'
 import { MediaPickerModal } from '@/components/MediaPickerModal'
 import { ProductMedia } from '@/components/ProductMedia'
 import type { MediaItem } from '@/data/media'
-import { readImageAsDataUrl } from '@/lib/readImageFile'
-import { isLocalMediaRef, isVideoSrc, saveLocalVideo } from '@/lib/localMediaStore'
+import {
+  isLocalMediaRef,
+  isVideoSrc,
+  persistInlineMediaSrcs,
+  saveLocalImage,
+  saveLocalVideo,
+} from '@/lib/localMediaStore'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -249,7 +254,8 @@ function ProductEditorModal({
       }
       const loaded: string[] = []
       for (const file of Array.from(files).slice(0, room)) {
-        loaded.push(await readImageAsDataUrl(file))
+        // IndexedDB refs — data URLs get stripped from localStorage on publish
+        loaded.push(await saveLocalImage(file))
       }
       addImages(loaded)
       if (!form.name && files[0]) {
@@ -295,39 +301,37 @@ function ProductEditorModal({
     }
   }
 
-  function buildProduct(publish: boolean): Product | null {
+  async function buildProduct(publish: boolean): Promise<Product | null> {
     if (!form.name.trim()) {
       setFormError('Product name is required')
       return null
     }
 
-    let images = [...form.images]
+    // Move any legacy data-URL media into IndexedDB before catalog persist
+    let images = await persistInlineMediaSrcs([...form.images])
     let video = form.video
-
-    // Drop only huge inline data URLs; keep library paths + IndexedDB local-media refs
-    const heavyData = images.some(
-      (src) => src.startsWith('data:') && !isLocalMediaRef(src) && src.length > 1_200_000,
-    )
-    if (heavyData) {
-      images = images.filter(
-        (src) => !src.startsWith('data:') || isLocalMediaRef(src),
-      )
-      toast('Large inline images trimmed — prefer From library or smaller files')
-    }
     if (video?.startsWith('data:') && !isLocalMediaRef(video)) {
-      // Legacy data-URL video cannot persist reliably
-      video = undefined
-      toast('Re-upload video with Upload video so it publishes correctly')
+      const [migrated] = await persistInlineMediaSrcs([video])
+      video = migrated || undefined
+      if (!video) {
+        toast('Re-upload video with Upload video so it publishes correctly')
+      }
+    } else if (video) {
+      const [kept] = await persistInlineMediaSrcs([video])
+      video = kept || video
     }
 
     // Ensure product video also appears in the image gallery container
     if (video && !images.includes(video)) {
       images = [...images, video].slice(0, MAX_PRODUCT_IMAGES)
+    } else {
+      images = images.slice(0, MAX_PRODUCT_IMAGES)
     }
 
     if (!images.length && !video) {
-      images = ['/assets/fringe-hero.png']
-      toast('No media attached — using a placeholder image')
+      setFormError('Add at least one image or video before saving')
+      toast('Add media before publishing — uploads are no longer replaced with defaults')
+      return null
     }
 
     const baseSlug = slugify(form.name) || `product-${Date.now()}`
@@ -425,15 +429,12 @@ function ProductEditorModal({
     }
   }
 
-  function save(publish: boolean) {
+  async function save(publish: boolean) {
     if (busy) return
-    const product = buildProduct(publish)
-    if (!product) {
-      toast('Product name is required')
-      return
-    }
     setBusy(true)
     try {
+      const product = await buildProduct(publish)
+      if (!product) return
       // Keep form ids in sync so Save → Publish works on the same product
       setForm((f) => ({
         ...f,
@@ -445,9 +446,9 @@ function ProductEditorModal({
       const ok = onSave(product, { publish })
       if (ok === false) {
         setFormError(
-          'Could not publish — device storage is full. Use From library images.',
+          'Could not publish — device storage is full. Prefer Upload (IndexedDB) or library paths.',
         )
-        toast('Publish failed — try From library media')
+        toast('Publish failed — re-upload images with Upload')
       }
     } finally {
       setBusy(false)
@@ -1144,7 +1145,7 @@ function ProductEditorModal({
           <button
             type="button"
             disabled={busy}
-            onClick={() => save(false)}
+            onClick={() => void save(false)}
             className="rounded-full border border-white/20 py-3 text-[12px] font-semibold uppercase tracking-wider text-[#e8e6e1] disabled:opacity-50"
           >
             {busy ? 'Saving…' : 'Save'}
@@ -1152,7 +1153,7 @@ function ProductEditorModal({
           <button
             type="button"
             disabled={busy}
-            onClick={() => save(true)}
+            onClick={() => void save(true)}
             className="rounded-full bg-[#D4AF37] py-3 text-[12px] font-semibold uppercase tracking-wider text-black disabled:opacity-50"
           >
             {busy ? 'Publishing…' : 'Submit · Publish'}
@@ -1167,7 +1168,10 @@ function ProductEditorModal({
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         onConfirm={addFromLibrary}
-        maxSelect={MAX_PRODUCT_IMAGES}
+        maxSelect={Math.max(
+          1,
+          MAX_PRODUCT_IMAGES - form.images.length,
+        )}
         title="Add media from library"
       />
     </div>
@@ -1330,18 +1334,18 @@ function ProductsPageInner() {
               <tr key={p.id} className="border-t border-white/10">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={
-                        (p.images ?? []).find(
-                          (src) =>
-                            !src.endsWith('.mp4') &&
-                            !src.startsWith('data:video'),
-                        ) || '/assets/fringe-hero.png'
-                      }
-                      alt=""
-                      className="h-10 w-10 rounded-lg object-cover ring-1 ring-white/10"
-                    />
+                    <div className="h-10 w-10 overflow-hidden rounded-lg ring-1 ring-white/10">
+                      <ProductMedia
+                        src={
+                          (p.images ?? []).find((src) => !isVideoSrc(src)) ||
+                          (p.images ?? [])[0] ||
+                          '/assets/fringe-hero.png'
+                        }
+                        alt=""
+                        thumb
+                        className="h-full w-full"
+                      />
+                    </div>
                     <div>
                       <p className="font-medium">{p.name}</p>
                       <p className="text-[12px] text-[#b8b0a4]">{p.id}</p>

@@ -82,9 +82,54 @@ export async function saveLocalVideo(file: File): Promise<string> {
 
 /** Persist an uploaded image blob and return a stable catalog reference. */
 export async function saveLocalImage(file: Blob): Promise<string> {
+  if (file.size > 12_000_000) {
+    throw new Error('Image is too large (max ~12MB)')
+  }
   const key = `${LOCAL_MEDIA_PREFIX}image:${newId()}`
   await putBlob(key, file)
   return key
+}
+
+/** Move a data-URL image into IndexedDB so it survives catalog publish. */
+export async function saveDataUrlAsLocalImage(dataUrl: string): Promise<string> {
+  if (!dataUrl.startsWith('data:')) {
+    throw new Error('Expected a data URL')
+  }
+  const res = await fetch(dataUrl)
+  const blob = await res.blob()
+  return saveLocalImage(blob)
+}
+
+/**
+ * Convert inline data-URL media to IndexedDB refs.
+ * Library paths and existing local-media refs are left unchanged.
+ */
+export async function persistInlineMediaSrcs(
+  srcs: string[],
+): Promise<string[]> {
+  const out: string[] = []
+  for (const src of srcs) {
+    if (!src) continue
+    if (isLocalMediaRef(src) || !src.startsWith('data:')) {
+      out.push(src)
+      continue
+    }
+    try {
+      if (src.startsWith('data:video')) {
+        const res = await fetch(src)
+        const blob = await res.blob()
+        const file = new File([blob], `clip-${newId()}.mp4`, {
+          type: blob.type || 'video/mp4',
+        })
+        out.push(await saveLocalVideo(file))
+      } else {
+        out.push(await saveDataUrlAsLocalImage(src))
+      }
+    } catch {
+      /* skip broken data URLs */
+    }
+  }
+  return out
 }
 
 /** Resolve a catalog src (path, data URL, or local-media ref) to a playable/display URL. */

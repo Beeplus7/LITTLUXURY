@@ -23,7 +23,7 @@ import {
   type ExtractedProduct,
   type ExtractedVariant,
 } from '@/lib/extractProduct'
-import { readImageAsDataUrl, readVideoAsDataUrl } from '@/lib/readImageFile'
+import { saveLocalImage, saveLocalVideo } from '@/lib/localMediaStore'
 import { MediaPickerModal } from '@/components/MediaPickerModal'
 import type { MediaItem } from '@/data/media'
 import {
@@ -287,15 +287,19 @@ export function AIBuilder({ productId }: { productId?: string }) {
     setUploading(true)
     try {
       const loaded: string[] = []
-      for (const file of Array.from(files).slice(0, 6)) {
-        loaded.push(await readImageAsDataUrl(file))
+      for (const file of Array.from(files).slice(0, 24)) {
+        loaded.push(
+          file.type.startsWith('video/')
+            ? await saveLocalVideo(file)
+            : await saveLocalImage(file),
+        )
       }
       setDraft((prev) => {
         const base = prev ?? emptyDraft()
         return {
           ...base,
           title: base.title || fileTitle(files[0]!),
-          images: [...base.images, ...loaded].slice(0, 16),
+          images: [...base.images, ...loaded].slice(0, 24),
         }
       })
       setDraftOpen(true)
@@ -319,13 +323,16 @@ export function AIBuilder({ productId }: { productId?: string }) {
     if (!file) return
     setUploadingVideo(true)
     try {
-      const dataUrl = await readVideoAsDataUrl(file)
+      const ref = await saveLocalVideo(file)
       setDraft((prev) => {
         const base = prev ?? emptyDraft()
         return {
           ...base,
           title: base.title || fileTitle(file),
-          video: dataUrl,
+          video: ref,
+          images: [...base.images, ref]
+            .filter((v, i, a) => a.indexOf(v) === i)
+            .slice(0, 24),
         }
       })
       setDraftOpen(true)
@@ -357,7 +364,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
         title: base.title || labelHint.replace(/[-_]+/g, ' ').trim(),
         images: [...base.images, ...images]
           .filter((v, i, a) => a.indexOf(v) === i)
-          .slice(0, 16),
+          .slice(0, 24),
         video: video ?? base.video,
       }
     })
@@ -842,7 +849,7 @@ export function AIBuilder({ productId }: { productId?: string }) {
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
         onConfirm={addFromLibrary}
-        maxSelect={16}
+        maxSelect={24}
       />
     </div>
   )
