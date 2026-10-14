@@ -4,6 +4,8 @@ export type ProductColor = {
   name: string
   hex: string
   label: string
+  /** Photos for this colour — shown on PDP when the swatch is selected */
+  images?: string[]
 }
 
 export type ProductVariant = {
@@ -140,6 +142,86 @@ export type Product = {
 
 export function isPublishedProduct(product: Product): boolean {
   return (product.status ?? 'published') === 'published'
+}
+
+function looksLikeVideo(src: string): boolean {
+  const lower = src.toLowerCase().split('?')[0] || ''
+  return (
+    lower.endsWith('.mp4') ||
+    lower.endsWith('.webm') ||
+    lower.endsWith('.mov') ||
+    lower.endsWith('.m4v') ||
+    src.startsWith('data:video') ||
+    src.startsWith('local-media:video:')
+  )
+}
+
+/** Gallery for a selected colour — colour photos first, then shared/unassigned media. */
+export function galleryForColor(
+  product: Product,
+  colorName?: string | null,
+): string[] {
+  const all = [...(product.images ?? [])]
+  if (product.video && !all.includes(product.video)) all.push(product.video)
+  const filtered = all.filter(Boolean)
+  if (!colorName) return filtered
+
+  const color = (product.colors ?? []).find((c) => c.name === colorName)
+  const fromColor = (color?.images ?? []).filter(Boolean)
+  const fromVariants = (product.variants ?? [])
+    .filter((v) => v.color === colorName && v.image)
+    .map((v) => v.image as string)
+
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const src of [...fromColor, ...fromVariants]) {
+    if (!src || seen.has(src)) continue
+    seen.add(src)
+    ordered.push(src)
+  }
+
+  const assignedToOther = new Set<string>()
+  for (const c of product.colors ?? []) {
+    if (c.name === colorName) continue
+    for (const src of c.images ?? []) assignedToOther.add(src)
+  }
+  for (const v of product.variants ?? []) {
+    if (v.color !== colorName && v.image) assignedToOther.add(v.image)
+  }
+
+  if (ordered.length) {
+    for (const src of filtered) {
+      if (seen.has(src)) continue
+      // Keep videos + unassigned stills; hide stills owned by another colour
+      if (assignedToOther.has(src) && !looksLikeVideo(src)) continue
+      seen.add(src)
+      ordered.push(src)
+    }
+    return ordered
+  }
+
+  // No explicit mapping yet: if each colour has a matching still by index, use that
+  const stills = filtered.filter((s) => !looksLikeVideo(s))
+  const colors = product.colors ?? []
+  if (colors.length > 1 && stills.length >= colors.length) {
+    const idx = colors.findIndex((c) => c.name === colorName)
+    if (idx >= 0 && stills[idx]) {
+      const primary = stills[idx]!
+      const videos = filtered.filter(looksLikeVideo)
+      return [primary, ...videos.filter((v) => v !== primary)]
+    }
+  }
+
+  return filtered
+}
+
+/** Primary still for a colour (swatch preview / cart thumbnail). */
+export function primaryImageForColor(
+  product: Product,
+  colorName?: string | null,
+): string | undefined {
+  const gallery = galleryForColor(product, colorName)
+  return gallery.find((src) => !looksLikeVideo(src)) ?? gallery[0]
 }
 
 export function isDraftProduct(product: Product): boolean {
@@ -352,8 +434,30 @@ export const initialProducts: Product[] = [
     description:
       'Three mini buckets, nested. Cherry, oxblood, and ecru — carry one or clip all three.',
     colors: [
-      { name: 'Red', hex: '#c1272d', label: 'Rosso' },
-      ...fringeColors.slice(0, 3),
+      {
+        name: 'Red',
+        hex: '#c1272d',
+        label: 'Rosso',
+        images: ['/assets/rosso-1.jpg', '/assets/rosso-hero.png'],
+      },
+      {
+        name: 'Black',
+        hex: '#111111',
+        label: 'Noir',
+        images: ['/assets/rosso-2.jpg'],
+      },
+      {
+        name: 'White',
+        hex: '#f5f5f5',
+        label: 'Blanc',
+        images: ['/assets/rosso-3.jpg'],
+      },
+      {
+        name: 'Ivory',
+        hex: '#fffff0',
+        label: 'Ivory',
+        images: ['/assets/rosso-3.jpg'],
+      },
     ],
     features: [
       'Set of 3 nested buckets',
@@ -380,6 +484,33 @@ export const initialProducts: Product[] = [
         sku: 'LL-RB-RED',
         image: '/assets/rosso-1.jpg',
       },
+      {
+        id: 'rosso-black',
+        color: 'Black',
+        hex: '#111111',
+        price: 265,
+        stock: 12,
+        sku: 'LL-RB-BLK',
+        image: '/assets/rosso-2.jpg',
+      },
+      {
+        id: 'rosso-white',
+        color: 'White',
+        hex: '#f5f5f5',
+        price: 265,
+        stock: 10,
+        sku: 'LL-RB-WHT',
+        image: '/assets/rosso-3.jpg',
+      },
+      {
+        id: 'rosso-ivory',
+        color: 'Ivory',
+        hex: '#fffff0',
+        price: 265,
+        stock: 10,
+        sku: 'LL-RB-IVY',
+        image: '/assets/rosso-3.jpg',
+      },
     ],
   }),
   bag({
@@ -393,9 +524,24 @@ export const initialProducts: Product[] = [
     reviewCount: 142,
     description: 'Woven raffia with leather trim — summer only, city to coast.',
     colors: [
-      { name: 'Natural', hex: '#e2c275', label: 'Natural' },
-      { name: 'Beige', hex: '#d9c5b4', label: 'Oat' },
-      { name: 'Black', hex: '#111111', label: 'Noir' },
+      {
+        name: 'Natural',
+        hex: '#e2c275',
+        label: 'Natural',
+        images: ['/assets/riviera-1.jpg', '/assets/riviera-hero.png'],
+      },
+      {
+        name: 'Beige',
+        hex: '#d9c5b4',
+        label: 'Oat',
+        images: ['/assets/riviera-2.jpg'],
+      },
+      {
+        name: 'Black',
+        hex: '#111111',
+        label: 'Noir',
+        images: ['/assets/riviera-3.jpg'],
+      },
     ],
     features: [
       'Hand-woven raffia',
@@ -421,6 +567,24 @@ export const initialProducts: Product[] = [
         stock: 22,
         sku: 'LL-RS-NAT',
         image: '/assets/riviera-1.jpg',
+      },
+      {
+        id: 'riviera-beige',
+        color: 'Beige',
+        hex: '#d9c5b4',
+        price: 245,
+        stock: 16,
+        sku: 'LL-RS-BEI',
+        image: '/assets/riviera-2.jpg',
+      },
+      {
+        id: 'riviera-black',
+        color: 'Black',
+        hex: '#111111',
+        price: 245,
+        stock: 14,
+        sku: 'LL-RS-BLK',
+        image: '/assets/riviera-3.jpg',
       },
     ],
   }),

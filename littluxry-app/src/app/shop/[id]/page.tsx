@@ -14,7 +14,12 @@ import { useProducts } from '@/context/ProductsContext'
 import { useCart } from '@/context/CartContext'
 import { useUI } from '@/context/UIContext'
 import { useWishlist } from '@/hooks/useWishlist'
-import { isPublishedProduct, sizesForShopCategory } from '@/data/products'
+import {
+  galleryForColor,
+  isPublishedProduct,
+  primaryImageForColor,
+  sizesForShopCategory,
+} from '@/data/products'
 import { isVideoSrc } from '@/lib/localMediaStore'
 import {
   SHIP_REGIONS,
@@ -90,16 +95,12 @@ export default function ProductPage() {
 
   const gallery = useMemo(() => {
     if (!product) return [] as string[]
-    const items = [...(product.images ?? [])]
-    if (product.video && !items.includes(product.video)) {
-      items.push(product.video)
-    }
-    return items.filter(Boolean)
-  }, [product])
+    return galleryForColor(product, selectedColor?.name)
+  }, [product, selectedColor?.name])
 
   useEffect(() => {
     setActiveImage(0)
-  }, [product?.id])
+  }, [product?.id, selectedColor?.name])
 
   useEffect(() => {
     if (!product) return
@@ -136,7 +137,12 @@ export default function ProductPage() {
 
   const current = gallery[activeImage] ?? gallery[0]
   const cartImage =
-    gallery.find((src) => !isVideoSrc(src)) ?? current ?? '/assets/fringe-hero.png'
+    (selectedColor
+      ? primaryImageForColor(product, selectedColor.name)
+      : undefined) ??
+    gallery.find((src) => !isVideoSrc(src)) ??
+    current ??
+    '/assets/fringe-hero.png'
   const colors = product.colors ?? []
   const features = product.features ?? []
   const tags = product.tags ?? []
@@ -338,13 +344,14 @@ export default function ProductPage() {
             <div className="flex flex-wrap gap-3">
               {colors.map((c) => {
                 const active = (selectedColor?.name ?? '') === c.name
+                const preview = primaryImageForColor(product, c.name)
                 return (
                   <button
                     key={c.name}
                     type="button"
                     onClick={() => setColor(c.name)}
                     className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-full border-2 transition',
+                      'relative h-11 w-11 overflow-hidden rounded-full border-2 transition',
                       active
                         ? 'border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.35)]'
                         : 'border-white/20',
@@ -352,10 +359,22 @@ export default function ProductPage() {
                     style={{ backgroundColor: c.hex }}
                     title={c.label ?? c.name}
                     aria-label={c.label ?? c.name}
-                  />
+                    aria-pressed={active}
+                  >
+                    {preview && !isVideoSrc(preview) ? (
+                      <ProductMedia
+                        src={preview}
+                        thumb
+                        className="h-full w-full opacity-90"
+                      />
+                    ) : null}
+                  </button>
                 )
               })}
             </div>
+            <p className="mt-2 text-[11px] text-[#6a655c]">
+              Tap a colour to view that bag in the gallery
+            </p>
           </div>
 
           <div className="mt-6">

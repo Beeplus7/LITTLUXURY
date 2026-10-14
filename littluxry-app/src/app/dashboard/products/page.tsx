@@ -54,6 +54,31 @@ type DraftVariant = {
   price: number
   stock: number
   sku: string
+  image?: string
+}
+
+function buildImageColorMap(product: Product): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const c of product.colors ?? []) {
+    for (const src of c.images ?? []) {
+      if (src) map[src] = c.name
+    }
+  }
+  for (const v of product.variants ?? []) {
+    if (v.image && !map[v.image]) map[v.image] = v.color
+  }
+  // Suggest 1:1 mapping when colours exist but nothing assigned yet
+  if (!Object.keys(map).length) {
+    const colors = product.colors ?? []
+    const stills = (product.images ?? []).filter((s) => !isVideoSrc(s))
+    if (colors.length > 1 && stills.length >= colors.length) {
+      colors.forEach((c, i) => {
+        const src = stills[i]
+        if (src) map[src] = c.name
+      })
+    }
+  }
+  return map
 }
 
 function emptyProduct(): Product {
@@ -106,6 +131,7 @@ function toDraftVariants(product: Product): DraftVariant[] {
     price: v.price,
     stock: v.stock,
     sku: v.sku,
+    image: v.image,
   }))
 }
 
@@ -138,6 +164,9 @@ function ProductEditorModal({
   const [uploading, setUploading] = useState(false)
   const [uploadingVideo, setUploadingVideo] = useState(false)
   const [imageUrlDraft, setImageUrlDraft] = useState('')
+  const [imageColorMap, setImageColorMap] = useState<Record<string, string>>(
+    () => buildImageColorMap(initial),
+  )
   const [customColourOpen, setCustomColourOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -199,12 +228,22 @@ function ProductEditorModal({
 
   function addImages(urls: string[]) {
     if (!urls.length) return
+    const assignColor = variantDraft.color.trim()
     setForm((f) => ({
       ...f,
       images: [...f.images, ...urls]
         .filter((v, i, a) => a.indexOf(v) === i)
         .slice(0, MAX_PRODUCT_IMAGES),
     }))
+    if (assignColor) {
+      setImageColorMap((m) => {
+        const next = { ...m }
+        for (const src of urls) {
+          if (!isVideoSrc(src) && !next[src]) next[src] = assignColor
+        }
+        return next
+      })
+    }
   }
 
   function removeImage(src: string) {
@@ -212,6 +251,11 @@ function ProductEditorModal({
       ...f,
       images: f.images.filter((img) => img !== src),
     }))
+    setImageColorMap((m) => {
+      const next = { ...m }
+      delete next[src]
+      return next
+    })
   }
 
   function addFromLibrary(items: MediaItem[]) {
@@ -342,6 +386,38 @@ function ProductEditorModal({
     const line: ProductLine =
       form.productLine || productLineForShopCategory(form.shopCategory)
 
+    const colorNamesFromVariants = Array.from(
+      new Set(
+        (variants.length
+          ? variants
+          : [{ color: 'Default', hex: '#111111' }]
+        ).map((v) => v.color || 'Default'),
+      ),
+    )
+
+    // Auto-assign stills to colours 1:1 when merchant hasn't tagged images yet
+    let colorAssign = { ...imageColorMap }
+    const tagged = Object.values(colorAssign).some(Boolean)
+    if (!tagged && colorNamesFromVariants.length > 1) {
+      const stills = images.filter((s) => !isVideoSrc(s))
+      if (stills.length >= colorNamesFromVariants.length) {
+        colorNamesFromVariants.forEach((name, i) => {
+          const src = stills[i]
+          if (src) colorAssign[src] = name
+        })
+      }
+    }
+
+    const imagesByColor = new Map<string, string[]>()
+    for (const src of images) {
+      if (isVideoSrc(src)) continue
+      const colorName = colorAssign[src]
+      if (!colorName) continue
+      const list = imagesByColor.get(colorName) ?? []
+      if (!list.includes(src)) list.push(src)
+      imagesByColor.set(colorName, list)
+    }
+
     const finalVariants: ProductVariant[] = (
       variants.length
         ? variants
@@ -356,19 +432,24 @@ function ProductEditorModal({
               sku: `LL-${baseSlug.slice(0, 6).toUpperCase()}`,
             },
           ]
-    ).map((v) => ({
-      id: `${id}-${slugify(v.color) || 'clr'}-${slugify(v.size) || 'sz'}-${v.key.slice(-4)}`,
-      color: v.color || 'Default',
-      hex: v.hex || '#111111',
-      size: v.size || 'OS',
-      price: Number(v.price) || Number(form.price) || 0,
-      stock: Number(v.stock) || 0,
-      sku: v.sku || `LL-${baseSlug.slice(0, 6).toUpperCase()}`,
-    }))
+    ).map((v) => {
+      const colorName = v.color || 'Default'
+      const colorImages = imagesByColor.get(colorName)
+      return {
+        id: `${id}-${slugify(colorName) || 'clr'}-${slugify(v.size) || 'sz'}-${v.key.slice(-4)}`,
+        color: colorName,
+        hex: v.hex || '#111111',
+        size: v.size || 'OS',
+        price: Number(v.price) || Number(form.price) || 0,
+        stock: Number(v.stock) || 0,
+        sku: v.sku || `LL-${baseSlug.slice(0, 6).toUpperCase()}`,
+        image: colorImages?.[0] || v.image,
+      }
+    })
 
     const colorMap = new Map<
       string,
-      { name: string; hex: string; label: string }
+      { name: string; hex: string; label: string; images?: string[] }
     >()
     for (const v of finalVariants) {
       if (!colorMap.has(v.color)) {
@@ -376,6 +457,7 @@ function ProductEditorModal({
           name: v.color,
           hex: v.hex,
           label: v.color,
+          images: imagesByColor.get(v.color) ?? [],
         })
       }
     }
@@ -854,37 +936,81 @@ function ProductEditorModal({
 
           {form.images.length || form.video ? (
             <div className="mt-4 space-y-3">
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {form.images.map((src) => (
-                  <div
-                    key={src.slice(0, 80)}
-                    className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black"
-                  >
-                    <ProductMedia src={src} thumb className="h-full w-full" />
-                    {isVideoSrc(src) ? (
-                      <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white">
-                        Video
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        removeImage(src)
-                        if (form.video === src) {
-                          setForm((f) => {
-                            const next = { ...f }
-                            delete next.video
-                            return next
-                          })
-                        }
-                      }}
-                      className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white opacity-90 hover:bg-red-500/80"
-                      aria-label="Remove media"
+              <p className="text-[11px] text-[#b8b0a4]">
+                Assign each photo to a colour so the shop gallery switches when
+                customers pick that swatch.
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {form.images.map((src) => {
+                  const colorOptions = Array.from(
+                    new Set(
+                      variants.map((v) => v.color).filter(Boolean),
+                    ),
+                  )
+                  return (
+                    <div
+                      key={src.slice(0, 80)}
+                      className="overflow-hidden rounded-xl border border-white/10 bg-black"
                     >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
+                      <div className="group relative aspect-square">
+                        <ProductMedia
+                          src={src}
+                          thumb
+                          className="h-full w-full"
+                        />
+                        {isVideoSrc(src) ? (
+                          <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white">
+                            Video
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removeImage(src)
+                            setImageColorMap((m) => {
+                              const next = { ...m }
+                              delete next[src]
+                              return next
+                            })
+                            if (form.video === src) {
+                              setForm((f) => {
+                                const next = { ...f }
+                                delete next.video
+                                return next
+                              })
+                            }
+                          }}
+                          className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white opacity-90 hover:bg-red-500/80"
+                          aria-label="Remove media"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      {!isVideoSrc(src) ? (
+                        <label className="block border-t border-white/10 px-2 py-1.5 text-[10px] uppercase tracking-wider text-[#6a655c]">
+                          Colour
+                          <select
+                            value={imageColorMap[src] || ''}
+                            onChange={(e) =>
+                              setImageColorMap((m) => ({
+                                ...m,
+                                [src]: e.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-950 px-2 py-1.5 text-[11px] normal-case tracking-normal text-[#e8e6e1]"
+                          >
+                            <option value="">All colours</option>
+                            {colorOptions.map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                  )
+                })}
               </div>
               {form.video && !form.images.includes(form.video) ? (
                 <p className="text-[11px] text-amber-200/80">
