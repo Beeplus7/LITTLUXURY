@@ -3,9 +3,24 @@
 import Link from 'next/link'
 import { useCart } from '@/context/CartContext'
 import { Footer } from '@/components/Footer'
+import {
+  SHIP_REGIONS,
+  shipRegionLabel,
+  type ShipRegion,
+} from '@/lib/shipping'
+import { cn } from '@/lib/cn'
 
 export default function CartPage() {
-  const { cartItems, total, updateQuantity, removeFromCart } = useCart()
+  const {
+    cartItems,
+    subtotal,
+    shipping,
+    total,
+    shipRegion,
+    setShipRegion,
+    updateQuantity,
+    removeFromCart,
+  } = useCart()
 
   return (
     <div>
@@ -87,9 +102,43 @@ export default function CartPage() {
                 </div>
               </div>
             ))}
-            <div className="flex items-center justify-between border-t border-white/10 pt-6">
-              <span className="text-[#b8b0a4]">Total</span>
-              <span className="serif text-3xl text-[#D4AF37]">${total}</span>
+
+            <div>
+              <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[#b8b0a4]">
+                Ship to · Europe &amp; USA only
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {SHIP_REGIONS.map((region) => (
+                  <button
+                    key={region.id}
+                    type="button"
+                    onClick={() => setShipRegion(region.id as ShipRegion)}
+                    className={cn(
+                      'rounded-xl border px-3 py-2.5 text-sm transition',
+                      shipRegion === region.id
+                        ? 'border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]'
+                        : 'border-white/15 text-[#b8b0a4]',
+                    )}
+                  >
+                    {region.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 border-t border-white/10 pt-6 text-sm">
+              <div className="flex justify-between text-[#b8b0a4]">
+                <span>Subtotal</span>
+                <span>${subtotal}</span>
+              </div>
+              <div className="flex justify-between text-[#b8b0a4]">
+                <span>Shipping · {shipRegionLabel(shipRegion)}</span>
+                <span>{shipping <= 0 ? 'Free' : `$${shipping}`}</span>
+              </div>
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[#b8b0a4]">Total</span>
+                <span className="serif text-3xl text-[#D4AF37]">${total}</span>
+              </div>
             </div>
             <Link
               href="/checkout"

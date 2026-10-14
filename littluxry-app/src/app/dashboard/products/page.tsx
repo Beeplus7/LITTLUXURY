@@ -88,10 +88,12 @@ function emptyProduct(): Product {
     seoTitle: '',
     seoDescription: '',
     shippingNote:
-      'Free tracked shipping on orders over $150. Dispatch from our atelier.',
+      'Tracked shipping to Europe and USA only. Dispatch from our atelier.',
     returnsNote:
       '30-day returns on unused items in original packaging.',
     processingDays: 2,
+    shippingEurope: 18,
+    shippingUsa: 22,
   }
 }
 
@@ -426,6 +428,11 @@ function ProductEditorModal({
         form.processingDays != null
           ? Math.max(0, Number(form.processingDays) || 0)
           : 2,
+      shippingEurope: Math.max(
+        0,
+        Number(form.shippingEurope ?? 18) || 0,
+      ),
+      shippingUsa: Math.max(0, Number(form.shippingUsa ?? 22) || 0),
     }
   }
 
@@ -664,7 +671,47 @@ function ProductEditorModal({
 
         <div className="mt-6 rounded-2xl border border-white/10 p-4">
           <h3 className="mb-3 text-sm font-semibold">Shipping & returns</h3>
+          <p className="mb-3 text-[11px] text-[#6a655c]">
+            We ship to Europe and USA only. Set flat rates shown on the product
+            page and at checkout.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-[12px] text-[#b8b0a4]">
+              Ship to Europe ($)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.shippingEurope ?? 18}
+                onChange={(e) =>
+                  patchForm({
+                    shippingEurope:
+                      e.target.value === ''
+                        ? 0
+                        : Number(e.target.value) || 0,
+                  })
+                }
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-[12px] text-[#b8b0a4]">
+              Ship to USA ($)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.shippingUsa ?? 22}
+                onChange={(e) =>
+                  patchForm({
+                    shippingUsa:
+                      e.target.value === ''
+                        ? 0
+                        : Number(e.target.value) || 0,
+                  })
+                }
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-sm"
+              />
+            </label>
             <label className="block text-[12px] text-[#b8b0a4]">
               Processing days
               <input

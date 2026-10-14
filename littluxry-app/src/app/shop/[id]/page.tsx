@@ -16,6 +16,11 @@ import { useUI } from '@/context/UIContext'
 import { useWishlist } from '@/hooks/useWishlist'
 import { isPublishedProduct, sizesForShopCategory } from '@/data/products'
 import { isVideoSrc } from '@/lib/localMediaStore'
+import {
+  SHIP_REGIONS,
+  shippingCostForRegion,
+  type ShipRegion,
+} from '@/lib/shipping'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -23,7 +28,7 @@ export default function ProductPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const { getProduct, products } = useProducts()
-  const { addToCart } = useCart()
+  const { addToCart, shipRegion, setShipRegion } = useCart()
   const { setMenuOpen } = useUI()
   const { toast } = useToast()
   const wishlist = useWishlist()
@@ -142,6 +147,7 @@ export default function ProductPage() {
   const lowStock = stock != null && stock > 0 && stock <= 3
   const wished = wishlist.has(product.id)
   const selectedSku = selectedVariant?.sku || product.sku
+  const shipCost = shippingCostForRegion(product, shipRegion)
 
   function add(buyNow = false) {
     if (!product || !selectedColor) return
@@ -161,6 +167,8 @@ export default function ProductPage() {
       size: size || 'OS',
       quantity: qty,
       image: cartImage,
+      shippingEurope: product.shippingEurope,
+      shippingUsa: product.shippingUsa,
     })
     toast(
       `Added ${product.menuLabel} · ${selectedColor.name} · ${size || 'OS'} × ${qty}`,
@@ -271,6 +279,52 @@ export default function ProductPage() {
               {product.processingDays === 1 ? '' : 's'}
             </p>
           ) : null}
+
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-[#b8b0a4]">
+                Ship to
+              </p>
+              <span className="text-[11px] text-[#b8b0a4]">
+                Europe &amp; USA only
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {SHIP_REGIONS.map((region) => {
+                const cost = shippingCostForRegion(product, region.id)
+                const active = shipRegion === region.id
+                return (
+                  <button
+                    key={region.id}
+                    type="button"
+                    onClick={() => setShipRegion(region.id as ShipRegion)}
+                    className={cn(
+                      'rounded-xl border px-3 py-3 text-left transition',
+                      active
+                        ? 'border-[#D4AF37] bg-[#D4AF37]/10'
+                        : 'border-white/15 hover:border-white/30',
+                    )}
+                  >
+                    <p className="text-[12px] font-medium text-white">
+                      {region.label}
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-0.5 text-[13px]',
+                        active ? 'text-[#D4AF37]' : 'text-[#b8b0a4]',
+                      )}
+                    >
+                      {cost <= 0 ? 'Free shipping' : `$${cost} shipping`}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-[12px] text-[#b8b0a4]">
+              Selected: {shipRegion === 'europe' ? 'Europe' : 'USA'} · +$
+              {shipCost} at checkout
+            </p>
+          </div>
 
           <div className="mt-8">
             <div className="mb-3 flex items-center justify-between">

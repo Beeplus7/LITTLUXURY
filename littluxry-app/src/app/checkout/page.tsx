@@ -2,13 +2,27 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useCart } from '@/context/CartContext'
 import { useToast } from '@/lib/toast'
 import { Footer } from '@/components/Footer'
-import Link from 'next/link'
+import {
+  SHIP_REGIONS,
+  shipRegionLabel,
+  type ShipRegion,
+} from '@/lib/shipping'
+import { cn } from '@/lib/cn'
 
 export default function CheckoutPage() {
-  const { cartItems, total, clearCart } = useCart()
+  const {
+    cartItems,
+    subtotal,
+    shipping,
+    total,
+    shipRegion,
+    setShipRegion,
+    clearCart,
+  } = useCart()
   const { toast } = useToast()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -38,7 +52,7 @@ export default function CheckoutPage() {
               setLoading(true)
               await new Promise((r) => setTimeout(r, 900))
               clearCart()
-              toast('Order placed — thank you')
+              toast(`Order placed — shipping to ${shipRegionLabel(shipRegion)}`)
               setLoading(false)
               router.push('/')
             }}
@@ -54,6 +68,33 @@ export default function CheckoutPage() {
                 </label>
               ),
             )}
+
+            <div className="pt-2">
+              <p className="text-[12px] text-[#b8b0a4]">
+                Ship to (Europe &amp; USA only)
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {SHIP_REGIONS.map((region) => {
+                  const active = shipRegion === region.id
+                  return (
+                    <button
+                      key={region.id}
+                      type="button"
+                      onClick={() => setShipRegion(region.id as ShipRegion)}
+                      className={cn(
+                        'rounded-xl border px-3 py-3 text-left text-sm transition',
+                        active
+                          ? 'border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]'
+                          : 'border-white/15 text-[#b8b0a4]',
+                      )}
+                    >
+                      {region.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -77,20 +118,31 @@ export default function CheckoutPage() {
           <div className="mt-4 space-y-3">
             {cartItems.map((item) => (
               <div
-                key={`${item.productId}-${item.color}`}
+                key={`${item.productId}-${item.color}-${item.size || ''}`}
                 className="flex justify-between text-sm"
               >
                 <span>
                   {item.name} × {item.quantity}
                   <span className="block text-[12px] text-[#b8b0a4]">
                     {item.color}
+                    {item.size ? ` · ${item.size}` : ''}
                   </span>
                 </span>
                 <span>${item.price * item.quantity}</span>
               </div>
             ))}
           </div>
-          <div className="mt-6 flex justify-between border-t border-white/10 pt-4">
+          <div className="mt-4 space-y-2 border-t border-white/10 pt-4 text-sm">
+            <div className="flex justify-between text-[#b8b0a4]">
+              <span>Subtotal</span>
+              <span>${subtotal}</span>
+            </div>
+            <div className="flex justify-between text-[#b8b0a4]">
+              <span>Shipping · {shipRegionLabel(shipRegion)}</span>
+              <span>{shipping <= 0 ? 'Free' : `$${shipping}`}</span>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-between border-t border-white/10 pt-4">
             <span>Total</span>
             <span className="serif text-2xl text-[#D4AF37]">${total}</span>
           </div>

@@ -90,6 +90,8 @@ export function ProductCard({ product, className }: Props) {
             price: product.price,
             color: colors[0]?.name ?? 'Default',
             image: image ?? '/assets/fringe-hero.png',
+            shippingEurope: product.shippingEurope,
+            shippingUsa: product.shippingUsa,
           })
           toast(`Added ${product.menuLabel} to cart`)
         }}

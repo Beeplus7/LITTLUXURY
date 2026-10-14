@@ -10,7 +10,10 @@ export function CartDrawer() {
     isCartOpen,
     setCartOpen,
     cartItems,
+    subtotal,
+    shipping,
     total,
+    shipRegion,
     updateQuantity,
     removeFromCart,
   } = useCart()
@@ -129,9 +132,21 @@ export function CartDrawer() {
         </div>
         {cartItems.length > 0 ? (
           <div className="border-t border-white/10 p-5">
-            <div className="mb-4 flex justify-between text-sm">
-              <span className="text-[#b8b0a4]">Subtotal</span>
-              <span className="serif text-xl text-[#D4AF37]">${total}</span>
+            <div className="mb-4 space-y-1.5 text-sm">
+              <div className="flex justify-between text-[#b8b0a4]">
+                <span>Subtotal</span>
+                <span>${subtotal}</span>
+              </div>
+              <div className="flex justify-between text-[#b8b0a4]">
+                <span>
+                  Shipping · {shipRegion === 'europe' ? 'Europe' : 'USA'}
+                </span>
+                <span>{shipping <= 0 ? 'Free' : `$${shipping}`}</span>
+              </div>
+              <div className="flex justify-between pt-1">
+                <span className="text-[#b8b0a4]">Total</span>
+                <span className="serif text-xl text-[#D4AF37]">${total}</span>
+              </div>
             </div>
             <Link
               href="/checkout"

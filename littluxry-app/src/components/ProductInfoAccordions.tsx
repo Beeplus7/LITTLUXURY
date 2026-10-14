@@ -3,6 +3,10 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { Product } from '@/data/products'
+import {
+  DEFAULT_SHIPPING_EUROPE,
+  DEFAULT_SHIPPING_USA,
+} from '@/lib/shipping'
 import { cn } from '@/lib/cn'
 
 type Props = {
@@ -12,14 +16,20 @@ type Props = {
 
 export function ProductInfoAccordions({ product, selectedSku }: Props) {
   const [open, setOpen] = useState<string | null>('shipping')
+  const eu = product.shippingEurope ?? DEFAULT_SHIPPING_EUROPE
+  const usa = product.shippingUsa ?? DEFAULT_SHIPPING_USA
 
   const sections = [
     {
       id: 'shipping',
       title: 'Shipping & dispatch',
-      body:
+      body: [
+        'We ship to Europe and USA only.',
+        `Europe: ${eu <= 0 ? 'Free' : `$${eu}`}`,
+        `USA: ${usa <= 0 ? 'Free' : `$${usa}`}`,
         product.shippingNote ||
-        'Free tracked shipping on orders over $150. Dispatch from our atelier.',
+          'Tracked shipping from our atelier.',
+      ].join('\n'),
       meta:
         product.processingDays != null
           ? `Usually ships in ${product.processingDays} business day${

@@ -214,6 +214,8 @@ export default function HomePage() {
                   price: p.price,
                   color: 'Black',
                   image: p.images[0],
+                  shippingEurope: p.shippingEurope,
+                  shippingUsa: p.shippingUsa,
                 })
                 toast('Fringe Noir added to cart')
               }}

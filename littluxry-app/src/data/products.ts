@@ -132,6 +132,10 @@ export type Product = {
   returnsNote?: string
   /** Etsy-style processing / dispatch window */
   processingDays?: number
+  /** Flat shipping to Europe (USD) — we only ship EU / USA */
+  shippingEurope?: number
+  /** Flat shipping to USA (USD) */
+  shippingUsa?: number
 }
 
 export function isPublishedProduct(product: Product): boolean {
@@ -764,11 +768,14 @@ export function normalizeProduct(raw: Partial<Product> & { id: string }): Produc
     shippingNote:
       raw.shippingNote ??
       base?.shippingNote ??
-      'Free tracked shipping on orders over $150. Dispatch from our atelier.',
+      'Tracked shipping to Europe and USA only. Dispatch from our atelier.',
     returnsNote:
       raw.returnsNote ??
       base?.returnsNote ??
       '30-day returns on unused items in original packaging.',
     processingDays: raw.processingDays ?? base?.processingDays ?? 2,
+    shippingEurope:
+      raw.shippingEurope ?? base?.shippingEurope ?? 18,
+    shippingUsa: raw.shippingUsa ?? base?.shippingUsa ?? 22,
   }
 }
