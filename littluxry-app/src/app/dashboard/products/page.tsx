@@ -7,6 +7,7 @@ import {
   Film,
   ImagePlus,
   Library,
+  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -38,6 +39,10 @@ import {
   saveLocalImage,
   saveLocalVideo,
 } from '@/lib/localMediaStore'
+import {
+  productFromExtract,
+  type ExtractedProduct,
+} from '@/lib/extractProduct'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
@@ -167,6 +172,9 @@ function ProductEditorModal({
   const [imageColorMap, setImageColorMap] = useState<Record<string, string>>(
     () => buildImageColorMap(initial),
   )
+  const [importUrl, setImportUrl] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState('')
   const [customColourOpen, setCustomColourOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -198,6 +206,80 @@ function ProductEditorModal({
 
   function patchForm(patch: Partial<Product>) {
     setForm((f) => ({ ...f, ...patch }))
+  }
+
+  async function importFromMarketplaceLink() {
+    const url = importUrl.trim()
+    if (!url) {
+      toast('Paste an Etsy, Shopify, Amazon, TikTok, or product URL')
+      return
+    }
+    setImporting(true)
+    setImportNote('')
+    setFormError(null)
+    try {
+      const res = await fetch('/api/extract-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, mirrorImages: true }),
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        product?: ExtractedProduct
+        platform?: string
+        error?: string
+      }
+      if (!res.ok || !data.product) {
+        throw new Error(data.error || 'Import failed')
+      }
+
+      const extracted = data.product
+      const built = productFromExtract(extracted)
+      const keepId = form.id || built.id
+      const keepSlug = form.slug || built.slug
+
+      setForm({
+        ...built,
+        id: keepId,
+        slug: keepSlug,
+        status: form.status || 'draft',
+        shippingEurope: form.shippingEurope ?? 18,
+        shippingUsa: form.shippingUsa ?? 22,
+        processingDays: form.processingDays ?? 2,
+        shippingNote:
+          form.shippingNote ||
+          'Tracked shipping to Europe and USA only. Dispatch from our atelier.',
+        returnsNote:
+          form.returnsNote ||
+          '30-day returns on unused items in original packaging.',
+      })
+      setVariants(toDraftVariants(built))
+      setFeatureText((built.features || []).join('\n'))
+      setTagsText(
+        [
+          data.platform || 'import',
+          ...(built.tags || []),
+          built.brand,
+        ]
+          .filter(Boolean)
+          .join(', '),
+      )
+      setImageColorMap(buildImageColorMap(built))
+      setImportNote(
+        `Imported ${built.images.length} image(s) · ${built.variants.length} variant(s) · ${
+          built.colors.length
+        } colour(s) from ${data.platform || 'link'}`,
+      )
+      toast(
+        `Imported “${built.name.slice(0, 40)}” — review & publish`,
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Import failed'
+      setFormError(msg)
+      toast(msg)
+    } finally {
+      setImporting(false)
+    }
   }
 
   function addVariantRow() {
@@ -564,6 +646,59 @@ function ProductEditorModal({
           >
             <X size={18} />
           </button>
+        </div>
+
+        <div className="mb-5 rounded-2xl border border-[#D4AF37]/30 bg-gradient-to-b from-[#D4AF37]/10 to-transparent p-4">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#D4AF37] text-black">
+              <Link2 size={16} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF37]">
+                Import from marketplace
+              </p>
+              <p className="mt-1 text-[12px] text-[#b8b0a4]">
+                Paste an Etsy, Shopify, Amazon, TikTok Shop, or any product page
+                link — we pull title, description, images, colours & variants
+                into this form.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={importUrl}
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void importFromMarketplaceLink()
+                    }
+                  }}
+                  placeholder="https://www.etsy.com/listing/… or Shopify / Amazon / TikTok URL"
+                  className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]/50"
+                />
+                <button
+                  type="button"
+                  disabled={importing}
+                  onClick={() => void importFromMarketplaceLink()}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#D4AF37] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-black disabled:opacity-50"
+                >
+                  {importing ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={14} />
+                  )}
+                  {importing ? 'Importing…' : 'Import product'}
+                </button>
+              </div>
+              {importNote ? (
+                <p className="mt-2 text-[11px] text-emerald-300/90">{importNote}</p>
+              ) : (
+                <p className="mt-2 text-[10px] text-[#6a655c]">
+                  Works best with public listing URLs. Some Amazon / TikTok pages
+                  block scrapers — try Shopify or Etsy if a link fails.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

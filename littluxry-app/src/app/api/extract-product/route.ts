@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server'
-import { analyzeProductHtml } from '@/lib/analyzeProductPage'
+import {
+  applyMirroredImages,
+  detectMarketplace,
+  importProductFromUrl,
+  mirrorRemoteImages,
+} from '@/lib/marketplaceImport'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 function isPrivateHostname(hostname: string) {
   const h = hostname.toLowerCase()
@@ -25,9 +31,9 @@ function isPrivateHostname(hostname: string) {
 }
 
 export async function POST(request: Request) {
-  let body: { url?: string }
+  let body: { url?: string; mirrorImages?: boolean }
   try {
-    body = (await request.json()) as { url?: string }
+    body = (await request.json()) as { url?: string; mirrorImages?: boolean }
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
@@ -54,42 +60,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'That host is not allowed' }, { status: 400 })
   }
 
-  let html = ''
+  const platform = detectMarketplace(parsed.toString())
+
   try {
-    const res = await fetch(parsed.toString(), {
-      redirect: 'follow',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: AbortSignal.timeout(15000),
-    })
-    if (!res.ok) {
+    let product = await importProductFromUrl(parsed.toString())
+
+    const shouldMirror = body.mirrorImages !== false
+    if (shouldMirror && product.images.length) {
+      const mirrored = await mirrorRemoteImages(product.images, 12)
+      if (mirrored.size) {
+        product = applyMirroredImages(product, mirrored)
+        product = {
+          ...product,
+          analysis: {
+            ...product.analysis,
+            sources: Array.from(
+              new Set([...product.analysis.sources, 'mirrored-uploads']),
+            ),
+          },
+        }
+      }
+    }
+
+    if (!product.title && !product.image && !product.variants.length) {
       return NextResponse.json(
-        { error: `Fetch failed (${res.status})` },
-        { status: 502 },
+        { error: 'Could not extract product details from that page' },
+        { status: 422 },
       )
     }
-    html = (await res.text()).slice(0, 2_000_000)
+
+    return NextResponse.json({
+      ok: true,
+      platform,
+      product,
+      analysis: product.analysis,
+    })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Fetch failed'
-    return NextResponse.json({ error: msg }, { status: 502 })
+    const msg = e instanceof Error ? e.message : 'Import failed'
+    return NextResponse.json({ error: msg, platform }, { status: 502 })
   }
-
-  const extracted = analyzeProductHtml(html, parsed.toString())
-
-  if (!extracted.title && !extracted.image && !extracted.variants.length) {
-    return NextResponse.json(
-      { error: 'Could not extract product details from that page' },
-      { status: 422 },
-    )
-  }
-
-  return NextResponse.json({
-    ok: true,
-    product: extracted,
-    analysis: extracted.analysis,
-  })
 }

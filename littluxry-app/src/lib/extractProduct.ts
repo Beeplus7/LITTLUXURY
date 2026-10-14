@@ -127,9 +127,10 @@ export function variantsFromExtract(
   const selected = (extract.variants.length
     ? extract.variants.filter((v) => v.selected !== false)
     : []
-  ).slice(0, 24)
+  ).slice(0, 40)
 
   if (!selected.length) {
+    const hero = extract.images[0] ?? extract.image ?? undefined
     return {
       variants: [
         {
@@ -139,37 +140,70 @@ export function variantsFromExtract(
           price: fallbackPrice,
           stock: 8,
           sku: `LL-IMP-${slugify(extract.title).slice(0, 6).toUpperCase()}`,
-          image: extract.images[0] ?? extract.image ?? undefined,
+          image: hero,
         },
       ],
-      colors: [{ name: 'Default', hex: '#111111', label: 'Default' }],
+      colors: [
+        {
+          name: 'Default',
+          hex: '#111111',
+          label: 'Default',
+          images: hero ? [hero] : [],
+        },
+      ],
     }
   }
 
   const variants: ProductVariant[] = selected.map((v, i) => {
-    const label = [v.color, v.size].filter(Boolean).join(' / ') || v.name
+    const color = (v.color || v.name || 'Default').trim() || 'Default'
+    const size = v.size?.trim() || undefined
     return {
-      id: `${productId}-${slugify(label) || i}`,
-      color: label,
-      hex: v.hex || colorHex(v.color || v.name),
+      id: `${productId}-${slugify([color, size].filter(Boolean).join('-')) || i}`,
+      color,
+      hex: v.hex || colorHex(color),
+      size,
       price: v.price && v.price > 0 ? Math.round(v.price) : fallbackPrice,
       stock: /out.?of.?stock|sold.?out|unavailable/i.test(v.availability ?? '')
         ? 0
         : 8,
       sku:
         v.sku ||
-        `LL-IMP-${slugify(label).slice(0, 8).toUpperCase() || String(i)}`,
+        `LL-IMP-${slugify(color).slice(0, 6).toUpperCase() || String(i)}${
+          size ? `-${slugify(size).slice(0, 4).toUpperCase()}` : ''
+        }`,
       image: v.image || extract.images[i] || extract.images[0] || undefined,
     }
   })
 
-  const colors: ProductColor[] = []
+  const colorMap = new Map<string, ProductColor>()
   for (const v of variants) {
-    if (!colors.some((c) => c.name === v.color)) {
-      colors.push({ name: v.color, hex: v.hex, label: v.color })
+    const existing = colorMap.get(v.color)
+    if (!existing) {
+      colorMap.set(v.color, {
+        name: v.color,
+        hex: v.hex,
+        label: v.color,
+        images: v.image ? [v.image] : [],
+      })
+    } else if (v.image && !(existing.images ?? []).includes(v.image)) {
+      existing.images = [...(existing.images ?? []), v.image]
     }
   }
-  return { variants, colors }
+
+  // Attach leftover gallery stills to colours in order when a colour has none
+  const used = new Set(
+    Array.from(colorMap.values()).flatMap((c) => c.images ?? []),
+  )
+  const spare = extract.images.filter((src) => src && !used.has(src))
+  let spareIdx = 0
+  for (const c of colorMap.values()) {
+    if ((c.images?.length ?? 0) === 0 && spare[spareIdx]) {
+      c.images = [spare[spareIdx]!]
+      spareIdx += 1
+    }
+  }
+
+  return { variants, colors: Array.from(colorMap.values()) }
 }
 
 /** Build a catalog Product from extracted link metadata + optional local media. */
@@ -227,12 +261,12 @@ export function productFromExtract(
       `Imported from ${extract.url}. Edit details in Products.`,
     colors,
     features: [
-      extract.brand ? `Brand: ${extract.brand}` : 'Imported via AI Builder',
+      extract.brand ? `Brand: ${extract.brand}` : 'Imported listing',
       `Source: ${extract.url}`,
-      `${images.length} image(s) · ${variants.length} variant(s)${
+      `${images.length} image(s) · ${variants.length} variant(s) · ${colors.length} colour(s)${
         video ? ' · video' : ''
       }`,
-      'Review pricing & stock before publish campaigns',
+      'Review pricing, colours & stock before publishing',
     ].filter(Boolean),
     images: imageList,
     gradient: 'from-[#1a1a1a] via-[#2a2a2a] to-[#0a0a0a]',
@@ -241,6 +275,10 @@ export function productFromExtract(
     shopCategory,
     variants,
     video,
+    brand: extract.brand || 'Litt Luxury',
+    seoTitle: title.slice(0, 70),
+    seoDescription: (extract.description || title).slice(0, 160),
+    status: 'draft',
   }
 }
 
