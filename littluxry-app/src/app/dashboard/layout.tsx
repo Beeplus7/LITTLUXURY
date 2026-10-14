@@ -23,11 +23,14 @@ import {
   Inbox,
   Bookmark,
   Pencil,
+  RotateCcw,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useSupportMessages } from '@/context/SupportMessagesContext'
 import { useProducts } from '@/context/ProductsContext'
 import { isDraftProduct } from '@/data/products'
+import { DEMO_STATS, useDashboardMock } from '@/hooks/useDashboardMock'
+import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/cn'
 
 type NavItem = {
@@ -53,12 +56,12 @@ const NAV: NavItem[] = [
     icon: Bookmark,
     match: 'saved',
   },
-  { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag, badge: '12' },
+  { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/dashboard/messages', label: 'Messages', icon: Inbox },
   { href: '/dashboard/inventory', label: 'Inventory', icon: Layers },
   { href: '/dashboard/variants', label: 'Variants Manager', icon: Palette },
   { href: '/dashboard/media', label: 'Media Library', icon: ImageIcon },
-  { href: '/dashboard/reviews', label: 'Reviews', icon: Star, badge: '124' },
+  { href: '/dashboard/reviews', label: 'Reviews', icon: Star },
   {
     href: '/dashboard/ai',
     label: 'AI Shop Builder',
@@ -75,6 +78,8 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const { isLoggedIn, hydrated, user, logout } = useAuth()
   const { unreadCount } = useSupportMessages()
   const { products } = useProducts()
+  const { showMock, resetMock, restoreMock } = useDashboardMock()
+  const { toast } = useToast()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -156,7 +161,11 @@ function DashboardShell({ children }: { children: ReactNode }) {
               ? String(unreadCount)
               : item.match === 'saved' && savedCount > 0
                 ? String(savedCount)
-                : item.badge
+                : showMock && item.href === '/dashboard/orders'
+                  ? DEMO_STATS.ordersBadge
+                  : showMock && item.href === '/dashboard/reviews'
+                    ? DEMO_STATS.reviewsBadge
+                    : item.badge
           return (
             <Link
               key={item.href}
@@ -249,6 +258,22 @@ function DashboardShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (showMock) {
+              resetMock()
+              toast('Mock data reset — demo badges cleared')
+            } else {
+              restoreMock()
+              toast('Demo mock data restored')
+            }
+          }}
+          className="mb-2 flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#2a2a2a] bg-[#141414] py-2.5 text-[12px] font-medium text-[#e8e6e1] transition hover:border-[#D4AF37]/30 hover:text-[#D4AF37]"
+        >
+          <RotateCcw size={14} className="text-[#D4AF37]" />
+          {showMock ? 'Reset mock data' : 'Show demo data'}
+        </button>
         <Link
           href="/shop"
           className="mb-2 flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#2a2a2a] bg-[#141414] py-2.5 text-[12px] font-medium text-[#e8e6e1] transition hover:border-[#D4AF37]/30"

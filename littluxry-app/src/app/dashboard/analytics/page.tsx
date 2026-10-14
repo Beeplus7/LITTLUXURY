@@ -1,19 +1,33 @@
 'use client'
 
 import { AdminSectionStub } from '@/components/AdminSectionStub'
+import { DEMO_STATS, useDashboardMock } from '@/hooks/useDashboardMock'
 
 export default function AnalyticsPage() {
+  const { showMock } = useDashboardMock()
+  const cards = showMock
+    ? [
+        { label: 'Sessions', value: DEMO_STATS.sessions },
+        { label: 'Conversion', value: DEMO_STATS.conversion },
+        { label: 'AOV', value: DEMO_STATS.aov },
+      ]
+    : [
+        { label: 'Sessions', value: '0' },
+        { label: 'Conversion', value: '—' },
+        { label: 'AOV', value: '—' },
+      ]
+
   return (
     <AdminSectionStub
       title="Analytics"
-      blurb="Traffic and conversion pulse from the original Admin Console."
+      blurb={
+        showMock
+          ? 'Demo traffic pulse — reset mock data from Overview or the admin menu.'
+          : 'Live analytics will appear when store traffic is connected.'
+      }
     >
       <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          { label: 'Sessions', value: '3.2k' },
-          { label: 'Conversion', value: '2.8%' },
-          { label: 'AOV', value: '$286' },
-        ].map((c) => (
+        {cards.map((c) => (
           <div
             key={c.label}
             className="rounded-[14px] border border-[#1a1a1a] bg-[#0f0f0f] p-4"
