@@ -191,19 +191,18 @@ export function variantsFromExtract(
   }
 
   // Attach leftover gallery stills to colours in order when a colour has none
-  const used = new Set(
-    Array.from(colorMap.values()).flatMap((c) => c.images ?? []),
-  )
+  const colorList = Array.from(colorMap.values())
+  const used = new Set(colorList.flatMap((c) => c.images ?? []))
   const spare = extract.images.filter((src) => src && !used.has(src))
   let spareIdx = 0
-  for (const c of colorMap.values()) {
+  for (const c of colorList) {
     if ((c.images?.length ?? 0) === 0 && spare[spareIdx]) {
       c.images = [spare[spareIdx]!]
       spareIdx += 1
     }
   }
 
-  return { variants, colors: Array.from(colorMap.values()) }
+  return { variants, colors: colorList }
 }
 
 /** Build a catalog Product from extracted link metadata + optional local media. */
