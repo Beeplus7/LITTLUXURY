@@ -75,7 +75,7 @@ const NAV: NavItem[] = [
 ]
 
 function DashboardShell({ children }: { children: ReactNode }) {
-  const { isLoggedIn, hydrated, user, logout } = useAuth()
+  const { isLoggedIn, hydrated, user, logout, isShopAdmin } = useAuth()
   const { unreadCount } = useSupportMessages()
   const { products } = useProducts()
   const { showMock, resetMock, restoreMock } = useDashboardMock()
@@ -93,10 +93,10 @@ function DashboardShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return
-    if (!isLoggedIn || user?.role !== 'owner') {
+    if (!isLoggedIn || !isShopAdmin) {
       router.replace('/admin/signin')
     }
-  }, [hydrated, isLoggedIn, user, router])
+  }, [hydrated, isLoggedIn, isShopAdmin, router])
 
   useEffect(() => {
     setMobileOpen(false)
@@ -110,7 +110,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
     )
   }
 
-  if (!isLoggedIn || user?.role !== 'owner') {
+  if (!isLoggedIn || !isShopAdmin) {
     return (
       <div className="grid min-h-[50vh] place-items-center text-[#b8b0a4]">
         Redirecting to admin sign in…

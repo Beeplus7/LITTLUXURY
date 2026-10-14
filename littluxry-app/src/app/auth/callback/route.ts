@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { readShopState } from '@/lib/shopStateServer'
+import { normalizeEmail } from '@/lib/shopStaff'
 
 function publicOrigin(request: Request) {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
@@ -11,7 +13,6 @@ function publicOrigin(request: Request) {
     request.headers.get('host') ??
     new URL(request.url).host
 
-  // Avoid nginx → 127.0.0.1:3020 leaking into redirects
   if (!host || host.startsWith('localhost') || host.startsWith('127.')) {
     return 'https://litt-luxury.com'
   }
@@ -27,7 +28,6 @@ export async function GET(request: Request) {
   const oauthError = searchParams.get('error')
   const oauthDesc = searchParams.get('error_description')
 
-  // Supabase / Google returned an error (e.g. invalid client secret)
   if (oauthError && !code) {
     const q = new URLSearchParams({
       error: oauthError,
@@ -44,17 +44,31 @@ export async function GET(request: Request) {
         data: { user },
       } = await supabase.auth.getUser()
 
-      // Promote demo/admin emails to owner role via user metadata when requested
-      if (user && roleHint === 'admin') {
+      const email = normalizeEmail(user?.email || '')
+      const shop = await readShopState()
+      const member = shop.staff.staff.find(
+        (s) => s.email === email && s.active !== false,
+      )
+
+      if (roleHint === 'admin') {
+        if (!member) {
+          await supabase.auth.signOut()
+          return NextResponse.redirect(
+            `${origin}/admin/signin?error=not_on_team`,
+          )
+        }
         await supabase.auth.updateUser({
-          data: { role: 'owner', app_role: 'owner' },
+          data: {
+            role: member.role,
+            app_role: member.role,
+            full_name: member.name,
+          },
         })
+        return NextResponse.redirect(`${origin}/dashboard`)
       }
 
       const dest =
-        roleHint === 'admin' ||
-        user?.user_metadata?.role === 'owner' ||
-        user?.email?.endsWith('@littluxry.com')
+        member && (member.role === 'owner' || member.role === 'staff')
           ? `${origin}/dashboard`
           : `${origin}${next.startsWith('/') ? next : `/${next}`}`
 

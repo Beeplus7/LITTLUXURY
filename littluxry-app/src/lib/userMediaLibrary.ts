@@ -10,6 +10,32 @@ import {
   saveLocalImage,
   saveLocalVideo,
 } from '@/lib/localMediaStore'
+import {
+  fetchShopState,
+  syncMediaLibrary,
+  uploadShopMedia,
+} from '@/lib/shopSyncClient'
+
+function actorEmail(): string | null {
+  try {
+    const raw = localStorage.getItem('littluxry_auth')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { email?: string }
+    return parsed.email?.trim().toLowerCase() || null
+  } catch {
+    return null
+  }
+}
+
+function pushMediaToServer() {
+  const email = actorEmail()
+  if (!email) return
+  void syncMediaLibrary(
+    email,
+    readRawSync(),
+    Array.from(readHiddenSync()),
+  )
+}
 
 const STORAGE_KEY = 'littluxry_user_media'
 const HIDDEN_KEY = 'littluxry_media_hidden'
@@ -40,18 +66,45 @@ function normalizeItems(parsed: unknown): MediaItem[] {
 
 /** Load user media + hidden IDs from durable storage (call on Media page mount). */
 export async function hydrateUserMediaLibrary(): Promise<void> {
-  const [media, hidden] = await Promise.all([
+  const [media, hidden, remote] = await Promise.all([
     loadJson<unknown>(STORAGE_KEY, DURABLE_MEDIA),
     loadJson<unknown>(HIDDEN_KEY, DURABLE_HIDDEN),
+    fetchShopState(),
   ])
-  memoryUser = normalizeItems(media)
-  memoryHidden = new Set(
+  const localItems = normalizeItems(media)
+  const localHidden = new Set(
     Array.isArray(hidden)
       ? hidden.filter((x): x is string => typeof x === 'string')
       : [],
   )
+  const remoteItems = normalizeItems(remote?.userMedia)
+  const remoteHidden = new Set(
+    Array.isArray(remote?.hiddenMediaIds)
+      ? remote.hiddenMediaIds.filter((x): x is string => typeof x === 'string')
+      : [],
+  )
+
+  const hasRemote =
+    Boolean(remote) &&
+    (remoteItems.length > 0 || remoteHidden.size > 0)
+
+  if (hasRemote) {
+    // Prefer shared shop media so every device sees the same library
+    const byId = new Map<string, MediaItem>()
+    for (const item of [...remoteItems, ...localItems]) {
+      if (!byId.has(item.id)) byId.set(item.id, item)
+    }
+    memoryUser = Array.from(byId.values()).slice(0, MAX_ITEMS)
+    memoryHidden = new Set([
+      ...Array.from(remoteHidden),
+      ...Array.from(localHidden),
+    ])
+  } else {
+    memoryUser = localItems
+    memoryHidden = localHidden
+  }
+
   hydrated = true
-  // Mirror into localStorage when possible so sync reads stay fresh
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryUser))
   } catch {
@@ -61,6 +114,12 @@ export async function hydrateUserMediaLibrary(): Promise<void> {
     localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(memoryHidden)))
   } catch {
     /* ignore */
+  }
+  await persistJson(STORAGE_KEY, DURABLE_MEDIA, memoryUser)
+  await persistJson(HIDDEN_KEY, DURABLE_HIDDEN, Array.from(memoryHidden))
+
+  if (!hasRemote && memoryUser.length) {
+    pushMediaToServer()
   }
 }
 
@@ -113,12 +172,19 @@ export async function addUploadedMediaFiles(
 ): Promise<MediaItem[]> {
   if (!hydrated) await hydrateUserMediaLibrary()
   const limit = opts?.limit ?? 24
+  const email = actorEmail()
   const created: MediaItem[] = []
   for (const file of files.slice(0, limit)) {
     const isVideo = file.type.startsWith('video/')
-    const src = isVideo
-      ? await saveLocalVideo(file)
-      : await saveLocalImage(file)
+    let src: string | null = null
+    if (email) {
+      src = await uploadShopMedia(email, file, file.name)
+    }
+    if (!src) {
+      src = isVideo
+        ? await saveLocalVideo(file)
+        : await saveLocalImage(file)
+    }
     created.push({
       id: `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type: isVideo ? 'video' : 'image',
@@ -131,6 +197,7 @@ export async function addUploadedMediaFiles(
   const next = [...created, ...readRawSync()].slice(0, MAX_ITEMS)
   const ok = await writeUser(next)
   if (!ok) throw new Error('Could not save media library (storage full)')
+  pushMediaToServer()
   return created
 }
 
@@ -156,7 +223,9 @@ export async function migrateUserMediaDataUrls(): Promise<void> {
 export async function hideLibraryMedia(id: string): Promise<boolean> {
   const ids = readHiddenSync()
   ids.add(id)
-  return writeHidden(ids)
+  const ok = await writeHidden(ids)
+  if (ok) pushMediaToServer()
+  return ok
 }
 
 /**
@@ -173,6 +242,7 @@ export async function deleteLibraryMedia(item: MediaItem): Promise<{
     const ok = await writeUser(next)
     await deleteLocalMedia(target.src)
     if (!ok) throw new Error('Could not persist media delete — storage full')
+    pushMediaToServer()
     return { kind: 'upload' }
   }
 
@@ -181,6 +251,7 @@ export async function deleteLibraryMedia(item: MediaItem): Promise<{
     const ok = await writeUser(next)
     await deleteLocalMedia(item.src)
     if (!ok) throw new Error('Could not persist media delete — storage full')
+    pushMediaToServer()
     return { kind: 'upload' }
   }
 
@@ -197,5 +268,6 @@ export async function clearAllUserUploads(): Promise<number> {
   }
   const ok = await writeUser([])
   if (!ok) throw new Error('Could not clear uploads — storage full')
+  pushMediaToServer()
   return items.length
 }

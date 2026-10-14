@@ -22,7 +22,11 @@ export function MobileNav() {
     { href: '/shop', label: 'Search', icon: Search },
     { href: '#cart', label: 'Cart', icon: ShoppingBag },
     {
-      href: isLoggedIn ? (user?.role === 'owner' ? '/dashboard' : '/signin') : '/signup',
+      href: isLoggedIn
+        ? user?.role === 'owner' || user?.role === 'staff'
+          ? '/dashboard'
+          : '/signin'
+        : '/signup',
       label: 'Account',
       icon: User,
     },

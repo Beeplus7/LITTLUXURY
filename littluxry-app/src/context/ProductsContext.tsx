@@ -21,6 +21,24 @@ import {
   isLocalMediaRef,
   persistInlineMediaSrcs,
 } from '@/lib/localMediaStore'
+import { fetchShopState, syncCatalog } from '@/lib/shopSyncClient'
+
+function actorEmail(): string | null {
+  try {
+    const raw = localStorage.getItem('littluxry_auth')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { email?: string }
+    return parsed.email?.trim().toLowerCase() || null
+  } catch {
+    return null
+  }
+}
+
+function pushCatalogToServer(products: Product[], removed: Set<string>) {
+  const email = actorEmail()
+  if (!email) return
+  void syncCatalog(email, products, Array.from(removed))
+}
 
 type ProductsContextValue = {
   products: Product[]
@@ -152,18 +170,31 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     async function hydrate() {
       try {
-        const [storedRaw, removedRaw] = await Promise.all([
+        const [storedRaw, removedRaw, remote] = await Promise.all([
           loadJson<unknown>(STORAGE_KEY, DURABLE_PRODUCTS),
           loadJson<unknown>(REMOVED_KEY, DURABLE_REMOVED),
+          fetchShopState(),
         ])
-        const removed = normalizeRemoved(removedRaw)
+        const localRemoved = normalizeRemoved(removedRaw)
+        const remoteRemoved = normalizeRemoved(remote?.removedIds)
+        const removed = new Set<string>([
+          ...Array.from(localRemoved),
+          ...Array.from(remoteRemoved),
+        ])
         removedIdsRef.current = removed
 
+        const remoteProducts = normalizeList(remote?.products)
+        const hasRemoteCatalog =
+          Boolean(remote) &&
+          (remoteProducts.length > 0 || remoteRemoved.size > 0)
+
         let catalog: Product[]
-        if (storedRaw != null) {
+        if (hasRemoteCatalog) {
+          // Shared shop store wins across devices
+          catalog = applyRemoved(remoteProducts, removed)
+        } else if (storedRaw != null) {
           catalog = applyRemoved(normalizeList(storedRaw), removed)
         } else {
-          // First visit only — seed catalog
           catalog = applyRemoved(initialProducts, removed)
         }
 
@@ -195,9 +226,12 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
           skipNextPersistRef.current = true
           productsRef.current = migrated
           setProductsState(migrated)
-          // Ensure durable copy matches (especially after migration)
           void persistCatalog(migrated)
           void persistRemoved(removed)
+          // Seed server from this device when remote catalog empty
+          if (!hasRemoteCatalog && migrated.length) {
+            pushCatalogToServer(migrated, removed)
+          }
         }
       } catch {
         if (!cancelled) {
@@ -259,6 +293,7 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     }
 
     const list = sync.stripped ? stripHeavyMedia(next) : next
+    pushCatalogToServer(list, removedIdsRef.current)
     if (!sync.ok) {
       // Optimistic UI + durable write in flight
       skipNextPersistRef.current = true

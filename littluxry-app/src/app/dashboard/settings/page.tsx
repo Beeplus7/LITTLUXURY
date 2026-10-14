@@ -41,7 +41,7 @@ export default function DashboardSettingsPage() {
         <div>
           <h1 className="serif text-3xl">Settings</h1>
           <p className="text-sm text-[#b8b0a4]">
-            Profile, security, store, payments, billing
+            Profile, team, security, store, payments, billing
           </p>
         </div>
         <button

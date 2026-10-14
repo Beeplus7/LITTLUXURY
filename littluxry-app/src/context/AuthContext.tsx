@@ -11,8 +11,25 @@ import {
 } from 'react'
 import type { Session, User as SbUser } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import {
+  findStaff,
+  hashPassword,
+  isAdminEmail,
+  isOwnerEmail,
+  normalizeEmail,
+  readLocalStaff,
+  verifyPassword,
+  writeLocalStaff,
+  type StaffMember,
+  type StaffRole,
+} from '@/lib/shopStaff'
+import {
+  claimShopOwner,
+  fetchShopState,
+  syncStaff,
+} from '@/lib/shopSyncClient'
 
-export type AppRole = 'owner' | 'customer'
+export type AppRole = 'owner' | 'staff' | 'customer'
 
 export type User = {
   id?: string
@@ -29,6 +46,8 @@ type AuthContextValue = {
   hydrated: boolean
   user: User | null
   session: Session | null
+  isShopAdmin: boolean
+  isShopOwner: boolean
   login: (
     email: string,
     password: string,
@@ -42,12 +61,27 @@ type AuthContextValue = {
     interests?: string[]
     role?: AppRole
   }) => Promise<{ ok: boolean; error?: string }>
+  /** First-time only: claim this shop as the sole owner */
+  claimOwner: (input: {
+    email: string
+    password: string
+    name: string
+  }) => Promise<{ ok: boolean; error?: string }>
   signInWithGoogle: (opts?: {
     next?: string
     role?: 'admin' | 'customer'
   }) => Promise<void>
   logout: () => Promise<void>
   updateUser: (patch: Partial<User>) => void
+  refreshStaff: () => Promise<void>
+  listTeam: () => StaffMember[]
+  addTeamMember: (input: {
+    email: string
+    name: string
+    password: string
+    role?: StaffRole
+  }) => Promise<{ ok: boolean; error?: string }>
+  removeTeamMember: (email: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 const STORAGE_KEY = 'littluxry_auth'
@@ -84,19 +118,29 @@ function setDemoSessionActive(on: boolean) {
   }
 }
 
+function roleFromStaff(email: string): AppRole {
+  const staff = readLocalStaff()
+  if (isOwnerEmail(staff, email)) return 'owner'
+  const m = findStaff(staff, email)
+  if (m?.role === 'staff') return 'staff'
+  return 'customer'
+}
+
 function mapUser(sb: SbUser | null, fallback?: Partial<User> | null): User | null {
   if (!sb) return fallback?.email ? (fallback as User) : null
   const meta = sb.user_metadata ?? {}
+  const email = sb.email ?? fallback?.email ?? ''
+  const staffRole = roleFromStaff(email)
+  // Never trust client metadata alone for admin — staff registry is source of truth
   const role: AppRole =
-    meta.role === 'owner' ||
-    meta.app_role === 'owner' ||
-    sb.email === DEMO_EMAIL ||
-    (sb.email?.endsWith('@littluxry.com') ?? false)
-      ? 'owner'
-      : 'customer'
+    staffRole === 'owner' || staffRole === 'staff'
+      ? staffRole
+      : meta.role === 'customer' || fallback?.role === 'customer'
+        ? 'customer'
+        : 'customer'
   return {
     id: sb.id,
-    email: sb.email ?? fallback?.email ?? '',
+    email,
     name:
       meta.full_name ||
       meta.name ||
@@ -122,49 +166,168 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  useEffect(() => {
-    const local = readLocalUser()
+  const refreshStaff = useCallback(async () => {
+    await fetchShopState()
+  }, [])
 
-    if (!supabase) {
-      setUser(local)
-      setHydrated(true)
-      return
-    }
+  const listTeam = useCallback((): StaffMember[] => {
+    return readLocalStaff().staff.filter((s) => s.active !== false)
+  }, [])
 
-    let unsub = () => {}
-
-    function applySession(next: Session | null) {
-      setSession(next)
-      if (next?.user) {
-        setDemoSessionActive(false)
-        setUser(mapUser(next.user, readLocalUser()))
-        return
-      }
-      // Preserve offline demo-owner session across refresh (no Supabase JWT)
-      if (isDemoSessionActive()) {
-        const demoLocal = readLocalUser()
-        if (
-          demoLocal?.email === DEMO_EMAIL &&
-          demoLocal.role === 'owner'
-        ) {
-          setUser(demoLocal)
-          return
+  const addTeamMember = useCallback(
+    async (input: {
+      email: string
+      name: string
+      password: string
+      role?: StaffRole
+    }) => {
+      await fetchShopState()
+      const staff = readLocalStaff()
+      const actor = normalizeEmail(user?.email || '')
+      if (!actor || !isOwnerEmail(staff, actor)) {
+        return {
+          ok: false,
+          error: 'Only the shop owner can add admin users.',
         }
       }
-      setUser(null)
-    }
+      const email = normalizeEmail(input.email)
+      if (!email.includes('@')) {
+        return { ok: false, error: 'Enter a valid email' }
+      }
+      if (input.password.length < 6) {
+        return { ok: false, error: 'Password must be at least 6 characters' }
+      }
+      if (findStaff(staff, email)) {
+        return { ok: false, error: 'That email is already on the team' }
+      }
+      if (email === staff.ownerEmail) {
+        return { ok: false, error: 'That email is already the shop owner' }
+      }
+      const passwordHash = await hashPassword(input.password)
+      const member: StaffMember = {
+        email,
+        name: input.name.trim() || email.split('@')[0] || 'Staff',
+        role: input.role === 'owner' ? 'staff' : input.role || 'staff',
+        passwordHash,
+        createdAt: new Date().toISOString(),
+        active: true,
+      }
+      const next = {
+        ownerEmail: staff.ownerEmail,
+        staff: [...staff.staff, member],
+        updatedAt: new Date().toISOString(),
+      }
+      const synced = await syncStaff(actor, next)
+      if (!synced) {
+        writeLocalStaff(next)
+        return {
+          ok: false,
+          error: 'Saved locally but could not sync to the shop server. Retry.',
+        }
+      }
 
-    void supabase.auth.getSession().then(({ data }) => {
+      if (supabase) {
+        await supabase.auth.signUp({
+          email,
+          password: input.password,
+          options: {
+            data: {
+              full_name: member.name,
+              name: member.name,
+              role: member.role,
+              app_role: member.role,
+            },
+          },
+        })
+      }
+
+      return { ok: true }
+    },
+    [supabase, user?.email],
+  )
+
+  const removeTeamMember = useCallback(
+    async (email: string) => {
+      await fetchShopState()
+      const staff = readLocalStaff()
+      const actor = normalizeEmail(user?.email || '')
+      if (!actor || !isOwnerEmail(staff, actor)) {
+        return {
+          ok: false,
+          error: 'Only the shop owner can remove admin users.',
+        }
+      }
+      const target = normalizeEmail(email)
+      if (target === staff.ownerEmail) {
+        return { ok: false, error: 'Cannot remove the shop owner' }
+      }
+      const next = {
+        ownerEmail: staff.ownerEmail,
+        staff: staff.staff.map((s) =>
+          s.email === target ? { ...s, active: false } : s,
+        ),
+        updatedAt: new Date().toISOString(),
+      }
+      const synced = await syncStaff(actor, next)
+      if (!synced) {
+        writeLocalStaff(next)
+        return {
+          ok: false,
+          error: 'Updated locally but could not sync to the shop server.',
+        }
+      }
+      return { ok: true }
+    },
+    [user?.email],
+  )
+
+  useEffect(() => {
+    const local = readLocalUser()
+    let unsub = () => {}
+
+    void (async () => {
+      await fetchShopState()
+      if (!supabase) {
+        if (local?.email) {
+          setUser({ ...local, role: roleFromStaff(local.email) })
+        } else {
+          setUser(null)
+        }
+        setHydrated(true)
+        return
+      }
+
+      function applySession(next: Session | null) {
+        setSession(next)
+        if (next?.user) {
+          setDemoSessionActive(false)
+          setUser(mapUser(next.user, readLocalUser()))
+          return
+        }
+        if (isDemoSessionActive()) {
+          const demoLocal = readLocalUser()
+          if (demoLocal && isAdminEmail(readLocalStaff(), demoLocal.email)) {
+            setUser({
+              ...demoLocal,
+              role: roleFromStaff(demoLocal.email),
+            })
+            return
+          }
+        }
+        setUser(null)
+      }
+
+      const { data } = await supabase.auth.getSession()
       applySession(data.session)
       setHydrated(true)
-    })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, next) => {
-      applySession(next)
-    })
-    unsub = () => subscription.unsubscribe()
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, next) => {
+        applySession(next)
+      })
+      unsub = () => subscription.unsubscribe()
+    })()
 
     return () => unsub()
   }, [supabase])
@@ -181,21 +344,98 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string,
       opts?: { preferAdmin?: boolean },
     ): Promise<{ ok: boolean; error?: string; role?: AppRole }> => {
-      const normalized = email.trim().toLowerCase()
+      const normalized = normalizeEmail(email)
+      await fetchShopState()
+      let staff = readLocalStaff()
 
-      // Owner credentials work offline and survive refresh via demo session flag
-      if (normalized === DEMO_EMAIL && password === DEMO_PASSWORD) {
-        const demo: User = {
+      // Seed demo owner into empty shop so first device can bootstrap
+      if (
+        normalized === DEMO_EMAIL &&
+        password === DEMO_PASSWORD &&
+        !staff.ownerEmail
+      ) {
+        const hash = await hashPassword(DEMO_PASSWORD)
+        const owner: StaffMember = {
           email: DEMO_EMAIL,
           name: 'Store Owner',
           role: 'owner',
+          passwordHash: hash,
+          createdAt: new Date().toISOString(),
+          active: true,
         }
-        setDemoSessionActive(true)
-        setSession(null)
-        setUser(demo)
-        return { ok: true, role: 'owner' }
+        const claimed = await claimShopOwner(owner)
+        if (claimed?.staff) staff = claimed.staff
+        else {
+          writeLocalStaff({
+            ownerEmail: DEMO_EMAIL,
+            staff: [owner],
+            updatedAt: new Date().toISOString(),
+          })
+          staff = readLocalStaff()
+        }
       }
 
+      if (opts?.preferAdmin) {
+        const member = findStaff(staff, normalized)
+        if (!member) {
+          return {
+            ok: false,
+            error:
+              'This email is not on the shop admin team. Ask the shop owner to add you in Settings → Team.',
+          }
+        }
+        if (member.passwordHash) {
+          const okPw = await verifyPassword(password, member.passwordHash)
+          // Allow demo password for demo owner always
+          const demoOk =
+            normalized === DEMO_EMAIL && password === DEMO_PASSWORD
+          if (!okPw && !demoOk) {
+            return { ok: false, error: 'Invalid email or password.' }
+          }
+        }
+
+        if (supabase) {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: normalized,
+            password,
+          })
+          if (!error && data.user) {
+            setDemoSessionActive(false)
+            const role = member.role as AppRole
+            await supabase.auth.updateUser({
+              data: { role, app_role: role, full_name: member.name },
+            })
+            const mapped = mapUser(data.user, {
+              name: member.name,
+              role,
+              email: normalized,
+            })
+            setUser(
+              mapped
+                ? { ...mapped, role, name: member.name, email: normalized }
+                : {
+                    email: normalized,
+                    name: member.name,
+                    role,
+                  },
+            )
+            setSession(data.session)
+            return { ok: true, role }
+          }
+        }
+
+        const role = member.role as AppRole
+        setDemoSessionActive(normalized === DEMO_EMAIL)
+        setSession(null)
+        setUser({
+          email: normalized,
+          name: member.name,
+          role,
+        })
+        return { ok: true, role }
+      }
+
+      // Customer / general login
       if (supabase) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: normalized,
@@ -203,33 +443,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         if (error) return { ok: false, error: error.message }
         setDemoSessionActive(false)
-        let mapped = mapUser(data.user, null)
-        if (opts?.preferAdmin && mapped) {
-          await supabase.auth.updateUser({
-            data: { role: 'owner', app_role: 'owner' },
-          })
-          mapped = { ...mapped, role: 'owner' }
-        }
+        const mapped = mapUser(data.user, null)
         setUser(mapped)
         setSession(data.session)
         return { ok: true, role: mapped?.role }
       }
 
       if (normalized.includes('@') && password.length >= 6) {
-        const role: AppRole = opts?.preferAdmin ? 'owner' : 'customer'
         setDemoSessionActive(false)
         setUser({
           email: normalized,
-          name: normalized.split('@')[0],
-          role,
+          name: normalized.split('@')[0] || 'Guest',
+          role: 'customer',
         })
-        return { ok: true, role }
+        return { ok: true, role: 'customer' }
       }
 
-      return {
-        ok: false,
-        error: 'Invalid email or password.',
+      return { ok: false, error: 'Invalid email or password.' }
+    },
+    [supabase],
+  )
+
+  const claimOwner = useCallback(
+    async (input: { email: string; password: string; name: string }) => {
+      const email = normalizeEmail(input.email)
+      await fetchShopState()
+      const staff = readLocalStaff()
+      if (staff.ownerEmail) {
+        return {
+          ok: false,
+          error:
+            'This shop already has an owner. Ask them to add your email in Settings → Team.',
+        }
       }
+      if (input.password.length < 6) {
+        return { ok: false, error: 'Password must be at least 6 characters' }
+      }
+      const passwordHash = await hashPassword(input.password)
+      const owner: StaffMember = {
+        email,
+        name: input.name.trim() || email.split('@')[0] || 'Owner',
+        role: 'owner',
+        passwordHash,
+        createdAt: new Date().toISOString(),
+        active: true,
+      }
+      const claimed = await claimShopOwner(owner)
+      if (!claimed) {
+        // Offline fallback — local only until sync works
+        writeLocalStaff({
+          ownerEmail: email,
+          staff: [owner],
+          updatedAt: new Date().toISOString(),
+        })
+      }
+
+      if (supabase) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password: input.password,
+          options: {
+            data: {
+              full_name: owner.name,
+              name: owner.name,
+              role: 'owner',
+              app_role: 'owner',
+            },
+          },
+        })
+        if (error && !error.message.toLowerCase().includes('already')) {
+          // still allow local owner session
+        }
+      }
+
+      setDemoSessionActive(email === DEMO_EMAIL)
+      setUser({ email, name: owner.name, role: 'owner' })
+      return { ok: true }
     },
     [supabase],
   )
@@ -243,8 +532,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       interests?: string[]
       role?: AppRole
     }) => {
-      const email = input.email.trim().toLowerCase()
-      const role = input.role ?? 'customer'
+      const email = normalizeEmail(input.email)
+      // Block public owner signup — must use claimOwner or Team invite
+      if (input.role === 'owner' || input.role === 'staff') {
+        return {
+          ok: false,
+          error:
+            'Admin accounts are created by the shop owner in Settings → Team (or claim the shop once).',
+        }
+      }
 
       if (supabase) {
         const { data, error } = await supabase.auth.signUp({
@@ -256,8 +552,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name: input.name,
               phone: input.phone,
               interests: input.interests ?? [],
-              role,
-              app_role: role,
+              role: 'customer',
+              app_role: 'customer',
             },
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
@@ -265,13 +561,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) return { ok: false, error: error.message }
         if (data.session) {
           setSession(data.session)
-          setUser(mapUser(data.user, { name: input.name, phone: input.phone, interests: input.interests, role, email }))
+          setUser(
+            mapUser(data.user, {
+              name: input.name,
+              phone: input.phone,
+              interests: input.interests,
+              role: 'customer',
+              email,
+            }),
+          )
         } else {
-          // Email confirmation may be required — still stash local profile for wizard UX
           setUser({
             email,
             name: input.name,
-            role,
+            role: 'customer',
             phone: input.phone,
             interests: input.interests,
           })
@@ -282,7 +585,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({
         email,
         name: input.name,
-        role,
+        role: 'customer',
         phone: input.phone,
         interests: input.interests,
       })
@@ -294,9 +597,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = useCallback(
     async (opts?: { next?: string; role?: 'admin' | 'customer' }) => {
       if (!supabase) {
-        throw new Error('Supabase is not configured — missing NEXT_PUBLIC_SUPABASE_* env')
+        throw new Error(
+          'Supabase is not configured — missing NEXT_PUBLIC_SUPABASE_* env',
+        )
       }
-      const next = opts?.next ?? (opts?.role === 'admin' ? '/dashboard' : '/shop')
+      await fetchShopState()
+      const next =
+        opts?.next ?? (opts?.role === 'admin' ? '/dashboard' : '/shop')
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}${
         opts?.role === 'admin' ? '&role=admin' : ''
       }`
@@ -311,10 +618,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error
       if (!data.url) {
         throw new Error(
-          'Google provider returned no URL — enable Google in Supabase Auth → Providers and paste Client ID/Secret',
+          'Google provider returned no URL — enable Google in Supabase Auth → Providers',
         )
       }
-      // Force navigation (more reliable than waiting for SDK redirect)
       window.location.assign(data.url)
     },
     [supabase],
@@ -330,15 +636,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = useCallback(
     (patch: Partial<User>) => {
       setUser((prev) => (prev ? { ...prev, ...patch } : prev))
-      if (supabase && (patch.name || patch.phone || patch.interests || patch.role)) {
+      if (supabase && (patch.name || patch.phone || patch.interests)) {
         void supabase.auth.updateUser({
           data: {
             full_name: patch.name,
             name: patch.name,
             phone: patch.phone,
             interests: patch.interests,
-            role: patch.role,
-            app_role: patch.role,
           },
         })
       }
@@ -346,19 +650,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [supabase],
   )
 
+  const isShopAdmin =
+    user?.role === 'owner' || user?.role === 'staff'
+  const isShopOwner = user?.role === 'owner'
+
   const value = useMemo(
     () => ({
       isLoggedIn: Boolean(user),
       hydrated,
       user,
       session,
+      isShopAdmin,
+      isShopOwner,
       login,
       signUp,
+      claimOwner,
       signInWithGoogle,
       logout,
       updateUser,
+      refreshStaff,
+      listTeam,
+      addTeamMember,
+      removeTeamMember,
     }),
-    [user, session, hydrated, login, signUp, signInWithGoogle, logout, updateUser],
+    [
+      user,
+      session,
+      hydrated,
+      isShopAdmin,
+      isShopOwner,
+      login,
+      signUp,
+      claimOwner,
+      signInWithGoogle,
+      logout,
+      updateUser,
+      refreshStaff,
+      listTeam,
+      addTeamMember,
+      removeTeamMember,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -371,3 +702,5 @@ export function useAuth() {
 }
 
 export const DEMO_CREDENTIALS = { email: DEMO_EMAIL, password: DEMO_PASSWORD }
+
+export type { StaffRole }

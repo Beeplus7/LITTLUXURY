@@ -1,22 +1,31 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, type FormEvent } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState, type FormEvent } from 'react'
 import { Shield } from 'lucide-react'
 import { GoogleAuthButton } from '@/components/GoogleAuthButton'
 import { VideoHero } from '@/components/VideoHero'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/lib/toast'
 
-export default function AdminSignInPage() {
+function AdminSignInForm() {
   const { login } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('error') === 'not_on_team') {
+      setError(
+        'That Google account is not on the shop admin team. Ask the owner to add you in Settings → Team.',
+      )
+    }
+  }, [searchParams])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -119,17 +128,34 @@ export default function AdminSignInPage() {
           </form>
 
           <p className="mt-6 text-center text-[12px] text-[#6a655c]">
-            Need an admin seat?{' '}
+            First-time owner?{' '}
             <Link href="/admin/signup" className="text-[#D4AF37]">
-              Admin sign up
+              Claim shop
             </Link>
             {' · '}
             <Link href="/signin" className="text-[#D4AF37]">
               Customer sign in
             </Link>
           </p>
+          <p className="mt-3 text-center text-[11px] text-[#6a655c]">
+            Extra admin logins are created by the owner in Settings → Team.
+          </p>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdminSignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[50vh] place-items-center text-[#b8b0a4]">
+          Loading…
+        </div>
+      }
+    >
+      <AdminSignInForm />
+    </Suspense>
   )
 }

@@ -52,7 +52,7 @@ function SignInInner() {
       return
     }
     toast('Welcome back')
-    if (res.role === 'owner') {
+    if (res.role === 'owner' || res.role === 'staff') {
       router.push('/dashboard')
       return
     }
