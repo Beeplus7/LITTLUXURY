@@ -145,6 +145,7 @@ function ProductEditorModal({
   initial,
   onClose,
   onSave,
+  focusImport = false,
 }: {
   mode: EditorMode
   initial: Product
@@ -153,10 +154,13 @@ function ProductEditorModal({
     product: Product,
     opts: { publish: boolean },
   ) => boolean | void
+  focusImport?: boolean
 }) {
   const { toast } = useToast()
   const imageRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLInputElement>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const importSectionRef = useRef<HTMLDivElement>(null)
   const [form, setForm] = useState<Product>(initial)
   const [variants, setVariants] = useState<DraftVariant[]>(() =>
     toDraftVariants(initial),
@@ -203,6 +207,15 @@ function ProductEditorModal({
       size: sizeOptions.includes(d.size) ? d.size : sizeOptions[0] || 'OS',
     }))
   }, [sizeOptions])
+
+  useEffect(() => {
+    if (!focusImport) return
+    const t = window.setTimeout(() => {
+      importSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      importInputRef.current?.focus()
+    }, 80)
+    return () => window.clearTimeout(t)
+  }, [focusImport])
 
   function patchForm(patch: Partial<Product>) {
     setForm((f) => ({ ...f, ...patch }))
@@ -632,10 +645,14 @@ function ProductEditorModal({
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] uppercase tracking-[0.16em] text-[#D4AF37]">
-              Manual entry
+              {focusImport ? 'Marketplace import' : 'Manual entry'}
             </p>
             <h2 className="serif text-2xl">
-              {mode === 'create' ? 'New product' : 'Edit product'}
+              {focusImport
+                ? 'Import product'
+                : mode === 'create'
+                  ? 'New product'
+                  : 'Edit product'}
             </h2>
           </div>
           <button
@@ -648,7 +665,10 @@ function ProductEditorModal({
           </button>
         </div>
 
-        <div className="mb-5 rounded-2xl border border-[#D4AF37]/30 bg-gradient-to-b from-[#D4AF37]/10 to-transparent p-4">
+        <div
+          ref={importSectionRef}
+          className="mb-5 rounded-2xl border border-[#D4AF37]/30 bg-gradient-to-b from-[#D4AF37]/10 to-transparent p-4"
+        >
           <div className="flex items-start gap-3">
             <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#D4AF37] text-black">
               <Link2 size={16} />
@@ -664,6 +684,7 @@ function ProductEditorModal({
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <input
+                  ref={importInputRef}
                   value={importUrl}
                   onChange={(e) => setImportUrl(e.target.value)}
                   onKeyDown={(e) => {
@@ -1502,6 +1523,7 @@ function ProductsPageInner() {
   const [editor, setEditor] = useState<{
     mode: EditorMode
     product: Product
+    focusImport?: boolean
   } | null>(null)
 
   const visibleProducts = useMemo(() => {
@@ -1515,6 +1537,19 @@ function ProductsPageInner() {
   }, [products, statusFilter])
 
   useEffect(() => {
+    if (params.get('import') === '1') {
+      setEditor({
+        mode: 'create',
+        product: emptyProduct(),
+        focusImport: true,
+      })
+      router.replace(
+        statusFilter === 'saved' || statusFilter === 'draft'
+          ? '/dashboard/products?status=saved'
+          : '/dashboard/products',
+      )
+      return
+    }
     if (params.get('new') === '1') {
       setEditor({ mode: 'create', product: emptyProduct() })
       router.replace(
@@ -1561,6 +1596,20 @@ function ProductsPageInner() {
             <Sparkles size={14} className="text-[#D4AF37]" />
             AI Builder
           </Link>
+          <button
+            type="button"
+            onClick={() =>
+              setEditor({
+                mode: 'create',
+                product: emptyProduct(),
+                focusImport: true,
+              })
+            }
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37]/50 px-4 py-2.5 text-[12px] font-semibold text-[#D4AF37] hover:bg-[#D4AF37]/10"
+          >
+            <Link2 size={14} />
+            Import product
+          </button>
           <button
             type="button"
             onClick={() =>
@@ -1738,9 +1787,14 @@ function ProductsPageInner() {
 
       {editor ? (
         <ProductEditorModal
-          key={editor.product.id || 'new-product'}
+          key={
+            editor.focusImport
+              ? 'import-product'
+              : editor.product.id || 'new-product'
+          }
           mode={editor.mode}
           initial={editor.product}
+          focusImport={Boolean(editor.focusImport)}
           onClose={() => setEditor(null)}
           onSave={(product, opts) => {
             const exists = products.some(
