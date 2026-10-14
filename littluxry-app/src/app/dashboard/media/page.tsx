@@ -10,6 +10,7 @@ import {
   deleteLibraryMedia,
   getHiddenMediaIds,
   getUserMediaLibrary,
+  hydrateUserMediaLibrary,
   migrateUserMediaDataUrls,
 } from '@/lib/userMediaLibrary'
 import { ProductMedia } from '@/components/ProductMedia'
@@ -38,6 +39,7 @@ export default function MediaPage() {
 
   useEffect(() => {
     void (async () => {
+      await hydrateUserMediaLibrary()
       await migrateUserMediaDataUrls()
       refresh()
     })()

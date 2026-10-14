@@ -16,6 +16,7 @@ import {
   type Product,
   type ProductVariant,
 } from '@/data/products'
+import { loadJson, persistJson } from '@/lib/durableJson'
 import {
   isLocalMediaRef,
   persistInlineMediaSrcs,
@@ -26,7 +27,7 @@ type ProductsContextValue = {
   getProduct: (id: string) => Product | undefined
   updateProduct: (id: string, patch: Partial<Product>) => boolean
   addProduct: (product: Product) => boolean
-  removeProduct: (id: string) => void
+  removeProduct: (id: string) => boolean
   duplicateProduct: (id: string) => Product | null
   addVariant: (productId: string, variant: ProductVariant) => void
   setProducts: (products: Product[]) => void
@@ -34,65 +35,35 @@ type ProductsContextValue = {
 
 const STORAGE_KEY = 'littluxry_products'
 const REMOVED_KEY = 'littluxry_products_removed'
+const DURABLE_PRODUCTS = 'products_catalog'
+const DURABLE_REMOVED = 'products_removed'
 const PLACEHOLDER_IMAGE = '/assets/fringe-hero.png'
 const ProductsContext = createContext<ProductsContextValue | null>(null)
 
-function readRemovedIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(REMOVED_KEY)
-    if (!raw) return new Set()
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return new Set()
-    return new Set(parsed.filter((x): x is string => typeof x === 'string'))
-  } catch {
-    return new Set()
-  }
+function normalizeList(parsed: unknown): Product[] {
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .map((p) => normalizeProduct(p as Product))
+    .filter((p): p is Product => Boolean(p))
 }
 
-function writeRemovedIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(REMOVED_KEY, JSON.stringify(Array.from(ids)))
-  } catch {
-    /* ignore quota / private mode */
-  }
+function normalizeRemoved(parsed: unknown): Set<string> {
+  if (!Array.isArray(parsed)) return new Set()
+  return new Set(parsed.filter((x): x is string => typeof x === 'string'))
 }
 
-function readStoredProducts(): Product[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw == null) return null
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return null
-    return parsed
-      .map((p) => normalizeProduct(p as Product))
-      .filter((p): p is Product => Boolean(p))
-  } catch {
-    return null
-  }
-}
-
-function mergeCatalog(stored: Product[] | null, removed: Set<string>): Product[] {
-  if (stored) {
-    const ids = new Set(stored.map((p) => p.id))
-    return [
-      ...stored.filter((p) => !removed.has(p.id) && !removed.has(p.slug)),
-      ...initialProducts.filter(
-        (p) => !ids.has(p.id) && !removed.has(p.id) && !removed.has(p.slug),
-      ),
-    ]
-  }
-  return initialProducts.filter(
-    (p) => !removed.has(p.id) && !removed.has(p.slug),
-  )
+/**
+ * Stored catalog is source of truth once it exists.
+ * Do NOT re-inject seed products on every load — that resurrected deletes.
+ */
+function applyRemoved(list: Product[], removed: Set<string>): Product[] {
+  return list.filter((p) => !removed.has(p.id) && !removed.has(p.slug))
 }
 
 function isDataUrl(src: string | undefined): boolean {
   return Boolean(src && src.startsWith('data:'))
 }
 
-/** Drop oversized data-URL media so the catalog fits in localStorage.
- *  Keeps library paths and IndexedDB local-media refs.
- *  Does NOT invent seed/default images for products that had custom media. */
 function stripHeavyMedia(products: Product[]): Product[] {
   return products.map((p) => {
     const kept = (p.images ?? [])
@@ -115,7 +86,7 @@ function stripHeavyMedia(products: Product[]): Product[] {
   })
 }
 
-function persistProducts(products: Product[]): {
+function persistProductsSync(products: Product[]): {
   ok: boolean
   stripped: boolean
 } {
@@ -142,6 +113,23 @@ function persistProducts(products: Product[]): {
   }
 }
 
+async function persistCatalog(products: Product[]): Promise<{
+  ok: boolean
+  stripped: boolean
+  list: Product[]
+}> {
+  const sync = persistProductsSync(products)
+  let list = products
+  if (sync.stripped) list = stripHeavyMedia(products)
+  // Always mirror to IndexedDB so deletes survive localStorage quota issues
+  const durableOk = await persistJson(STORAGE_KEY, DURABLE_PRODUCTS, list)
+  return { ok: sync.ok || durableOk, stripped: sync.stripped, list }
+}
+
+async function persistRemoved(ids: Set<string>): Promise<boolean> {
+  return persistJson(REMOVED_KEY, DURABLE_REMOVED, Array.from(ids))
+}
+
 function notifyPersistIssue(message: string) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(
@@ -153,18 +141,34 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   const [products, setProductsState] = useState<Product[]>(initialProducts)
   const [hydrated, setHydrated] = useState(false)
   const removedIdsRef = useRef<Set<string>>(new Set())
+  const productsRef = useRef<Product[]>(initialProducts)
   const skipNextPersistRef = useRef(false)
+
+  useEffect(() => {
+    productsRef.current = products
+  }, [products])
 
   useEffect(() => {
     let cancelled = false
     async function hydrate() {
       try {
-        const removed = readRemovedIds()
+        const [storedRaw, removedRaw] = await Promise.all([
+          loadJson<unknown>(STORAGE_KEY, DURABLE_PRODUCTS),
+          loadJson<unknown>(REMOVED_KEY, DURABLE_REMOVED),
+        ])
+        const removed = normalizeRemoved(removedRaw)
         removedIdsRef.current = removed
-        const merged = mergeCatalog(readStoredProducts(), removed)
-        // Migrate any legacy data-URL product images into IndexedDB
+
+        let catalog: Product[]
+        if (storedRaw != null) {
+          catalog = applyRemoved(normalizeList(storedRaw), removed)
+        } else {
+          // First visit only — seed catalog
+          catalog = applyRemoved(initialProducts, removed)
+        }
+
         const migrated = await Promise.all(
-          merged.map(async (p) => {
+          catalog.map(async (p) => {
             const needs =
               (p.images ?? []).some(
                 (src) => src.startsWith('data:') && !isLocalMediaRef(src),
@@ -186,12 +190,20 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
             }
           }),
         )
+
         if (!cancelled) {
-          skipNextPersistRef.current = false
+          skipNextPersistRef.current = true
+          productsRef.current = migrated
           setProductsState(migrated)
+          // Ensure durable copy matches (especially after migration)
+          void persistCatalog(migrated)
+          void persistRemoved(removed)
         }
       } catch {
-        if (!cancelled) setProductsState(initialProducts)
+        if (!cancelled) {
+          skipNextPersistRef.current = true
+          setProductsState(initialProducts)
+        }
       }
       if (!cancelled) setHydrated(true)
     }
@@ -207,20 +219,23 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
       skipNextPersistRef.current = false
       return
     }
-    const result = persistProducts(products)
-    if (!result.ok) {
-      notifyPersistIssue(
-        'Could not save catalog on this device (storage full). Try smaller images.',
-      )
-      return
-    }
-    if (result.stripped) {
-      skipNextPersistRef.current = true
-      setProductsState(stripHeavyMedia(products))
-      notifyPersistIssue(
-        'Images were too large for device storage — placeholders used. Prefer Library media.',
-      )
-    }
+    void (async () => {
+      const result = await persistCatalog(products)
+      if (!result.ok) {
+        notifyPersistIssue(
+          'Could not save catalog on this device (storage full). Try smaller images.',
+        )
+        return
+      }
+      if (result.stripped) {
+        skipNextPersistRef.current = true
+        productsRef.current = result.list
+        setProductsState(result.list)
+        notifyPersistIssue(
+          'Images were too large for device storage — placeholders used. Prefer Library media.',
+        )
+      }
+    })()
   }, [products, hydrated])
 
   const getProduct = useCallback(
@@ -229,35 +244,47 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
   )
 
   const commitCatalog = useCallback((next: Product[]): boolean => {
-    const result = persistProducts(next)
-    if (!result.ok) {
-      notifyPersistIssue(
-        'Could not save catalog on this device (storage full). Try Library images.',
-      )
-      return false
+    const sync = persistProductsSync(next)
+    if (!sync.ok) {
+      // Still try IndexedDB asynchronously
+      void persistCatalog(next).then((r) => {
+        if (!r.ok) {
+          notifyPersistIssue(
+            'Could not save catalog on this device (storage full). Try Library images.',
+          )
+        }
+      })
+    } else {
+      void persistCatalog(sync.stripped ? stripHeavyMedia(next) : next)
     }
-    if (result.stripped) {
-      const lite = stripHeavyMedia(next)
+
+    const list = sync.stripped ? stripHeavyMedia(next) : next
+    if (!sync.ok) {
+      // Optimistic UI + durable write in flight
       skipNextPersistRef.current = true
-      setProductsState(lite)
-      notifyPersistIssue(
-        'Large uploads were replaced with placeholders — prefer From library.',
-      )
+      productsRef.current = list
+      setProductsState(list)
       return true
     }
     skipNextPersistRef.current = true
-    setProductsState(next)
+    productsRef.current = list
+    setProductsState(list)
+    if (sync.stripped) {
+      notifyPersistIssue(
+        'Large uploads were replaced with placeholders — prefer From library.',
+      )
+    }
     return true
   }, [])
 
   const updateProduct = useCallback(
     (id: string, patch: Partial<Product>): boolean => {
-      const next = products.map((p) =>
+      const next = productsRef.current.map((p) =>
         p.id === id || p.slug === id ? { ...p, ...patch } : p,
       )
       return commitCatalog(next)
     },
-    [products, commitCatalog],
+    [commitCatalog],
   )
 
   const addProduct = useCallback(
@@ -269,35 +296,48 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         features: Array.isArray(product.features) ? product.features : [],
         variants: Array.isArray(product.variants) ? product.variants : [],
       }
+      // Publishing a product should not resurrect other deleted items
       removedIdsRef.current.delete(safe.id)
       removedIdsRef.current.delete(safe.slug)
-      writeRemovedIds(removedIdsRef.current)
-      const next = products.some((p) => p.id === safe.id)
-        ? products.map((p) => (p.id === safe.id ? safe : p))
-        : [safe, ...products]
+      void persistRemoved(removedIdsRef.current)
+
+      const current = productsRef.current
+      const next = current.some((p) => p.id === safe.id)
+        ? current.map((p) => (p.id === safe.id ? safe : p))
+        : [safe, ...current]
       return commitCatalog(next)
     },
-    [products, commitCatalog],
+    [commitCatalog],
   )
 
   const removeProduct = useCallback(
-    (id: string) => {
-      const target = products.find((p) => p.id === id || p.slug === id)
+    (id: string): boolean => {
+      const current = productsRef.current
+      const target = current.find((p) => p.id === id || p.slug === id)
       if (target) {
         removedIdsRef.current.add(target.id)
         removedIdsRef.current.add(target.slug)
       } else {
         removedIdsRef.current.add(id)
       }
-      writeRemovedIds(removedIdsRef.current)
-      commitCatalog(products.filter((p) => p.id !== id && p.slug !== id))
+      void persistRemoved(removedIdsRef.current)
+
+      const next = current.filter((p) => p.id !== id && p.slug !== id)
+      const ok = commitCatalog(next)
+      if (!ok) {
+        notifyPersistIssue('Could not delete product — storage full')
+        return false
+      }
+      return true
     },
-    [products, commitCatalog],
+    [commitCatalog],
   )
 
   const duplicateProduct = useCallback(
     (id: string): Product | null => {
-      const source = products.find((p) => p.id === id || p.slug === id)
+      const source = productsRef.current.find(
+        (p) => p.id === id || p.slug === id,
+      )
       if (!source) return null
       const stamp = Date.now().toString(36)
       const newId = `${source.id}-copy-${stamp}`
@@ -316,43 +356,43 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         colors: [...(source.colors ?? [])],
         features: [...(source.features ?? [])],
       }
-      const ok = commitCatalog([created, ...products])
+      const ok = commitCatalog([created, ...productsRef.current])
       return ok ? created : null
     },
-    [products, commitCatalog],
+    [commitCatalog],
   )
 
   const addVariant = useCallback(
     (productId: string, variant: ProductVariant) => {
-      setProductsState((prev) =>
-        prev.map((p) => {
-          if (p.id !== productId && p.slug !== productId) return p
-          const variants = p.variants ?? []
-          const colors = p.colors ?? []
-          const exists = variants.some((v) => v.id === variant.id)
-          return {
-            ...p,
-            variants: exists
-              ? variants.map((v) => (v.id === variant.id ? variant : v))
-              : [...variants, variant],
-            colors: colors.some((c) => c.name === variant.color)
-              ? colors
-              : [
-                  ...colors,
-                  {
-                    name: variant.color,
-                    hex: variant.hex,
-                    label: variant.color,
-                  },
-                ],
-          }
-        }),
-      )
+      const next = productsRef.current.map((p) => {
+        if (p.id !== productId && p.slug !== productId) return p
+        const variants = p.variants ?? []
+        const colors = p.colors ?? []
+        const exists = variants.some((v) => v.id === variant.id)
+        return {
+          ...p,
+          variants: exists
+            ? variants.map((v) => (v.id === variant.id ? variant : v))
+            : [...variants, variant],
+          colors: colors.some((c) => c.name === variant.color)
+            ? colors
+            : [
+                ...colors,
+                {
+                  name: variant.color,
+                  hex: variant.hex,
+                  label: variant.color,
+                },
+              ],
+        }
+      })
+      commitCatalog(next)
     },
-    [],
+    [commitCatalog],
   )
 
   const setProducts = useCallback((next: Product[]) => {
+    productsRef.current = next
     setProductsState(next)
   }, [])
 

@@ -6,6 +6,7 @@ import { mediaLibrary, type MediaItem } from '@/data/media'
 import {
   getHiddenMediaIds,
   getUserMediaLibrary,
+  hydrateUserMediaLibrary,
 } from '@/lib/userMediaLibrary'
 import { ProductMedia } from '@/components/ProductMedia'
 import { cn } from '@/lib/cn'
@@ -69,11 +70,14 @@ export function MediaPickerModal({
     setQuery('')
     setFilter('all')
     setVisibleCount(PAGE_SIZE)
-    const hidden = new Set(getHiddenMediaIds())
-    setLibrary([
-      ...getUserMediaLibrary(),
-      ...mediaLibrary.filter((m) => !hidden.has(m.id)),
-    ])
+    void (async () => {
+      await hydrateUserMediaLibrary()
+      const hidden = new Set(getHiddenMediaIds())
+      setLibrary([
+        ...getUserMediaLibrary(),
+        ...mediaLibrary.filter((m) => !hidden.has(m.id)),
+      ])
+    })()
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {

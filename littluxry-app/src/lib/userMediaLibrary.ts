@@ -1,6 +1,7 @@
-/** User-uploaded Media Library items (persisted separately from seed/Yupoo assets). */
+/** User-uploaded Media Library items (persisted separately from seed assets). */
 
 import type { MediaItem } from '@/data/media'
+import { loadJson, persistJson } from '@/lib/durableJson'
 import {
   deleteLocalMedia,
   isLocalMediaRef,
@@ -12,52 +13,105 @@ import {
 
 const STORAGE_KEY = 'littluxry_user_media'
 const HIDDEN_KEY = 'littluxry_media_hidden'
+const DURABLE_MEDIA = 'user_media'
+const DURABLE_HIDDEN = 'media_hidden'
 const MAX_ITEMS = 200
 
-function readRaw(): MediaItem[] {
-  if (typeof window === 'undefined') return []
+let memoryUser: MediaItem[] | null = null
+let memoryHidden: Set<string> | null = null
+let hydrated = false
+
+function normalizeItems(parsed: unknown): MediaItem[] {
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .filter(
+      (m): m is MediaItem =>
+        Boolean(m) &&
+        typeof m === 'object' &&
+        typeof (m as MediaItem).id === 'string' &&
+        typeof (m as MediaItem).src === 'string',
+    )
+    .map((m) => ({
+      ...m,
+      type: m.type === 'video' || isVideoSrc(m.src) ? 'video' : 'image',
+      tags: Array.isArray(m.tags) ? m.tags : ['upload'],
+    }))
+}
+
+/** Load user media + hidden IDs from durable storage (call on Media page mount). */
+export async function hydrateUserMediaLibrary(): Promise<void> {
+  const [media, hidden] = await Promise.all([
+    loadJson<unknown>(STORAGE_KEY, DURABLE_MEDIA),
+    loadJson<unknown>(HIDDEN_KEY, DURABLE_HIDDEN),
+  ])
+  memoryUser = normalizeItems(media)
+  memoryHidden = new Set(
+    Array.isArray(hidden)
+      ? hidden.filter((x): x is string => typeof x === 'string')
+      : [],
+  )
+  hydrated = true
+  // Mirror into localStorage when possible so sync reads stay fresh
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryUser))
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(memoryHidden)))
+  } catch {
+    /* ignore */
+  }
+}
+
+function readRawSync(): MediaItem[] {
+  if (memoryUser) return memoryUser
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .filter(
-        (m): m is MediaItem =>
-          Boolean(m) &&
-          typeof m === 'object' &&
-          typeof (m as MediaItem).id === 'string' &&
-          typeof (m as MediaItem).src === 'string',
-      )
-      .map((m) => ({
-        ...m,
-        type: m.type === 'video' || isVideoSrc(m.src) ? 'video' : 'image',
-        tags: Array.isArray(m.tags) ? m.tags : ['upload'],
-      }))
+    return normalizeItems(JSON.parse(raw))
   } catch {
     return []
   }
 }
 
-function writeRaw(items: MediaItem[]) {
+async function writeUser(items: MediaItem[]): Promise<boolean> {
+  const next = items.slice(0, MAX_ITEMS)
+  memoryUser = next
+  return persistJson(STORAGE_KEY, DURABLE_MEDIA, next)
+}
+
+function readHiddenSync(): Set<string> {
+  if (memoryHidden) return new Set(memoryHidden)
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(items.slice(0, MAX_ITEMS)),
-    )
+    const raw = localStorage.getItem(HIDDEN_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((x): x is string => typeof x === 'string'))
   } catch {
-    /* quota — ignore; IndexedDB blobs still exist */
+    return new Set()
   }
 }
 
+async function writeHidden(ids: Set<string>): Promise<boolean> {
+  memoryHidden = new Set(ids)
+  return persistJson(HIDDEN_KEY, DURABLE_HIDDEN, Array.from(ids))
+}
+
 export function getUserMediaLibrary(): MediaItem[] {
-  return readRaw()
+  return readRawSync()
+}
+
+export function getHiddenMediaIds(): string[] {
+  return Array.from(readHiddenSync())
 }
 
 export async function addUploadedMediaFiles(
   files: File[],
   opts?: { limit?: number },
 ): Promise<MediaItem[]> {
+  if (!hydrated) await hydrateUserMediaLibrary()
   const limit = opts?.limit ?? 24
   const created: MediaItem[] = []
   for (const file of files.slice(0, limit)) {
@@ -74,14 +128,15 @@ export async function addUploadedMediaFiles(
       sizeLabel: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
     })
   }
-  const next = [...created, ...readRaw()].slice(0, MAX_ITEMS)
-  writeRaw(next)
+  const next = [...created, ...readRawSync()].slice(0, MAX_ITEMS)
+  const ok = await writeUser(next)
+  if (!ok) throw new Error('Could not save media library (storage full)')
   return created
 }
 
-/** Migrate legacy data-URL uploads in the user library into IndexedDB. */
 export async function migrateUserMediaDataUrls(): Promise<void> {
-  const items = readRaw()
+  await hydrateUserMediaLibrary()
+  const items = readRawSync()
   let changed = false
   const next: MediaItem[] = []
   for (const item of items) {
@@ -95,71 +150,52 @@ export async function migrateUserMediaDataUrls(): Promise<void> {
     }
     next.push(item)
   }
-  if (changed) writeRaw(next)
+  if (changed) await writeUser(next)
 }
 
-function readHiddenIds(): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const raw = localStorage.getItem(HIDDEN_KEY)
-    if (!raw) return new Set()
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return new Set()
-    return new Set(parsed.filter((x): x is string => typeof x === 'string'))
-  } catch {
-    return new Set()
-  }
-}
-
-function writeHiddenIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(ids)))
-  } catch {
-    /* ignore */
-  }
-}
-
-export function getHiddenMediaIds(): string[] {
-  return Array.from(readHiddenIds())
-}
-
-/** Hide a built-in/core library asset from Media Library + picker. */
-export function hideLibraryMedia(id: string): void {
-  const ids = readHiddenIds()
+export async function hideLibraryMedia(id: string): Promise<boolean> {
+  const ids = readHiddenSync()
   ids.add(id)
-  writeHiddenIds(ids)
+  return writeHidden(ids)
 }
 
 /**
- * Delete a user upload (IndexedDB + list), or hide a core/built-in asset.
+ * Delete a user upload (IndexedDB blob + list), or hide a core/built-in asset.
  */
 export async function deleteLibraryMedia(item: MediaItem): Promise<{
   kind: 'upload' | 'hidden'
 }> {
-  const userItems = readRaw()
+  if (!hydrated) await hydrateUserMediaLibrary()
+  const userItems = readRawSync()
   const target = userItems.find((m) => m.id === item.id)
   if (target) {
-    writeRaw(userItems.filter((m) => m.id !== item.id))
+    const next = userItems.filter((m) => m.id !== item.id)
+    const ok = await writeUser(next)
     await deleteLocalMedia(target.src)
+    if (!ok) throw new Error('Could not persist media delete — storage full')
     return { kind: 'upload' }
   }
 
-  // Legacy uploads may only be tagged — still try to drop blob
   if ((item.tags ?? []).includes('upload') || isLocalMediaRef(item.src)) {
-    writeRaw(userItems.filter((m) => m.src !== item.src))
+    const next = userItems.filter((m) => m.src !== item.src)
+    const ok = await writeUser(next)
     await deleteLocalMedia(item.src)
+    if (!ok) throw new Error('Could not persist media delete — storage full')
     return { kind: 'upload' }
   }
 
-  hideLibraryMedia(item.id)
+  const ok = await hideLibraryMedia(item.id)
+  if (!ok) throw new Error('Could not persist media delete — storage full')
   return { kind: 'hidden' }
 }
 
 export async function clearAllUserUploads(): Promise<number> {
-  const items = readRaw()
+  if (!hydrated) await hydrateUserMediaLibrary()
+  const items = readRawSync()
   for (const item of items) {
     await deleteLocalMedia(item.src)
   }
-  writeRaw([])
+  const ok = await writeUser([])
+  if (!ok) throw new Error('Could not clear uploads — storage full')
   return items.length
 }
