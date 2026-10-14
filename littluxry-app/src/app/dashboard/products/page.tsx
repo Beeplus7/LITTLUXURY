@@ -396,7 +396,7 @@ function ProductEditorModal({
     )
 
     // Auto-assign stills to colours 1:1 when merchant hasn't tagged images yet
-    let colorAssign = { ...imageColorMap }
+    const colorAssign = { ...imageColorMap }
     const tagged = Object.values(colorAssign).some(Boolean)
     if (!tagged && colorNamesFromVariants.length > 1) {
       const stills = images.filter((s) => !isVideoSrc(s))
