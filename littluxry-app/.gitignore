@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# runtime shop / email state on the server
+/data/
+
 node_modules/
 .next/
 out/

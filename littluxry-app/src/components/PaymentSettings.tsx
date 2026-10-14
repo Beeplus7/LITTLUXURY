@@ -98,13 +98,27 @@ export function PaymentSettings() {
               type="button"
               onClick={() =>
                 toast(
-                  'Stripe Checkout is live on /checkout — use a test card 4242…',
+                  'Stripe Checkout is live — confirmations email after pay (Resend/SMTP + Stripe receipt)',
                 )
               }
               className="rounded-full bg-[#D4AF37] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-black"
             >
               Stripe ready
             </button>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 p-4">
+            <p className="font-medium">Order confirmation email</p>
+            <p className="mt-1 text-[12px] text-[#b8b0a4]">
+              After payment we email a LITT LUXURY confirmation (and Stripe may
+              send its own receipt). Set{' '}
+              <span className="text-[#D4AF37]">RESEND_API_KEY</span> +{' '}
+              <span className="text-[#D4AF37]">ORDER_EMAIL_FROM</span> in server
+              env, webhook:{' '}
+              <span className="text-[#e8e6e1]">
+                https://litt-luxury.com/api/stripe/webhook
+              </span>
+            </p>
           </div>
 
           {[

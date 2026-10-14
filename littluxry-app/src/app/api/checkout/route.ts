@@ -122,11 +122,16 @@ export async function POST(request: Request) {
       })
     }
 
+    const customerEmail = body.email?.trim() || undefined
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       line_items,
-      customer_email: body.email?.trim() || undefined,
+      customer_email: customerEmail,
+      // Stripe’s own payment receipt (Dashboard → Settings → Emails must allow it)
+      payment_intent_data: customerEmail
+        ? { receipt_email: customerEmail }
+        : undefined,
       shipping_address_collection: {
         allowed_countries: shipRegion === 'usa' ? ['US'] : [
           'AT',
