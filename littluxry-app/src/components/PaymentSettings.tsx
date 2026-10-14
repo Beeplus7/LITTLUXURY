@@ -86,26 +86,24 @@ export function PaymentSettings() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 p-4">
             <div>
-              <p className="font-medium">Stripe Connect</p>
+              <p className="font-medium">Stripe Checkout</p>
               <p className="text-[12px] text-[#b8b0a4]">
-                Keys loaded from Visaguide/passport-paper ·{' '}
+                Cart pay button opens hosted Stripe Checkout ·{' '}
                 {process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
                   ? `pk …${process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.slice(-6)}`
-                  : 'missing publishable key'}
+                  : 'publishable key optional for hosted checkout'}
               </p>
             </div>
             <button
               type="button"
               onClick={() =>
                 toast(
-                  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-                    ? 'Stripe test keys detected — wire Checkout Session next'
-                    : 'Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY',
+                  'Stripe Checkout is live on /checkout — use a test card 4242…',
                 )
               }
               className="rounded-full bg-[#D4AF37] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-black"
             >
-              Connect Stripe
+              Stripe ready
             </button>
           </div>
 

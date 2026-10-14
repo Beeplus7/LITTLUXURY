@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useCart } from '@/context/CartContext'
 import { useToast } from '@/lib/toast'
 import { Footer } from '@/components/Footer'
@@ -13,7 +13,7 @@ import {
 } from '@/lib/shipping'
 import { cn } from '@/lib/cn'
 
-export default function CheckoutPage() {
+function CheckoutInner() {
   const {
     cartItems,
     subtotal,
@@ -21,11 +21,53 @@ export default function CheckoutPage() {
     total,
     shipRegion,
     setShipRegion,
-    clearCart,
   } = useCart()
   const { toast } = useToast()
-  const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+
+  useEffect(() => {
+    if (searchParams.get('canceled') === '1') {
+      toast('Checkout canceled — your cart is still here')
+    }
+  }, [searchParams, toast])
+
+  async function payWithStripe(e?: FormEvent) {
+    e?.preventDefault()
+    if (!cartItems.length) return
+    if (!email.trim() || !email.includes('@')) {
+      setError('Enter a valid email for your Stripe receipt')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cartItems,
+          shipRegion,
+          shipping,
+          email: email.trim(),
+          customerName: name.trim(),
+        }),
+      })
+      const data = (await res.json()) as { url?: string; error?: string }
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Could not start Stripe Checkout')
+      }
+      window.location.assign(data.url)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Stripe checkout failed'
+      setError(msg)
+      toast(msg)
+      setLoading(false)
+    }
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -45,29 +87,29 @@ export default function CheckoutPage() {
       <section className="mx-auto grid max-w-5xl gap-8 px-5 py-12 md:grid-cols-2 md:px-10">
         <div>
           <h1 className="serif text-4xl">Checkout</h1>
-          <form
-            className="mt-8 space-y-3"
-            onSubmit={async (e) => {
-              e.preventDefault()
-              setLoading(true)
-              await new Promise((r) => setTimeout(r, 900))
-              clearCart()
-              toast(`Order placed — shipping to ${shipRegionLabel(shipRegion)}`)
-              setLoading(false)
-              router.push('/')
-            }}
-          >
-            {['Full name', 'Email', 'Address', 'City', 'Postal code'].map(
-              (label) => (
-                <label key={label} className="block text-[12px] text-[#b8b0a4]">
-                  {label}
-                  <input
-                    required
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]/50"
-                  />
-                </label>
-              ),
-            )}
+          <p className="mt-2 text-sm text-[#b8b0a4]">
+            Secure card payment via Stripe. You’ll finish on Stripe’s checkout
+            page.
+          </p>
+          <form className="mt-8 space-y-3" onSubmit={(e) => void payWithStripe(e)}>
+            <label className="block text-[12px] text-[#b8b0a4]">
+              Full name
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]/50"
+              />
+            </label>
+            <label className="block text-[12px] text-[#b8b0a4]">
+              Email (receipt)
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-2.5 text-sm text-white outline-none focus:border-[#D4AF37]/50"
+              />
+            </label>
 
             <div className="pt-2">
               <p className="text-[12px] text-[#b8b0a4]">
@@ -95,20 +137,18 @@ export default function CheckoutPage() {
               </div>
             </div>
 
+            {error ? <p className="text-sm text-red-300">{error}</p> : null}
+
             <button
               type="submit"
               disabled={loading}
-              className="mt-4 w-full rounded-full bg-[#D4AF37] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-black disabled:opacity-60"
+              className="mt-4 w-full rounded-full bg-[#635BFF] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-60"
             >
-              {loading ? 'Processing…' : `Pay $${total}`}
+              {loading ? 'Opening Stripe…' : `Pay $${total} with Stripe`}
             </button>
-            <button
-              type="button"
-              onClick={() => toast('Redirecting to PayPal…')}
-              className="w-full rounded-full bg-[#0070ba] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white"
-            >
-              PayPal
-            </button>
+            <p className="text-center text-[11px] text-[#6a655c]">
+              Cards · Apple Pay / Google Pay when available on Stripe Checkout
+            </p>
           </form>
         </div>
         <div className="rounded-2xl border border-white/10 bg-zinc-950 p-5">
@@ -150,5 +190,19 @@ export default function CheckoutPage() {
       </section>
       <Footer />
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[40vh] place-items-center text-[#b8b0a4]">
+          Loading checkout…
+        </div>
+      }
+    >
+      <CheckoutInner />
+    </Suspense>
   )
 }
