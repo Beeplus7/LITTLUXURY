@@ -109,6 +109,8 @@ export type Product = {
   colors: ProductColor[]
   features: string[]
   images: string[]
+  /** Preferred front / hero image (must be one of `images`) */
+  coverImage?: string
   gradient: string
   /** Alias of productLine — kept for AI Builder compatibility */
   category: ProductLine
@@ -156,20 +158,56 @@ function looksLikeVideo(src: string): boolean {
   )
 }
 
+/** Drop empty / junk / duplicate media paths that show as blank tiles. */
+export function sanitizeMediaList(srcs: string[] | undefined | null): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of srcs ?? []) {
+    if (typeof raw !== 'string') continue
+    const src = raw.trim()
+    if (!src) continue
+    if (/^(undefined|null|unknown|blank|n\/a)$/i.test(src)) continue
+    if (seen.has(src)) continue
+    seen.add(src)
+    out.push(src)
+  }
+  return out
+}
+
+/** Put cover image first when present in the list. */
+export function withCoverFirst(
+  images: string[],
+  coverImage?: string | null,
+): string[] {
+  const list = sanitizeMediaList(images)
+  if (!coverImage || !list.includes(coverImage)) return list
+  return [coverImage, ...list.filter((s) => s !== coverImage)]
+}
+
 /** Gallery for a selected colour — colour photos first, then shared/unassigned media. */
 export function galleryForColor(
   product: Product,
   colorName?: string | null,
 ): string[] {
-  const all = [...(product.images ?? [])]
-  if (product.video && !all.includes(product.video)) all.push(product.video)
-  const filtered = all.filter(Boolean)
+  const all = sanitizeMediaList([
+    ...(product.images ?? []),
+    ...(product.video ? [product.video] : []),
+  ])
+  const filtered = withCoverFirst(all, product.coverImage)
   if (!colorName) return filtered
 
   const color = (product.colors ?? []).find((c) => c.name === colorName)
-  const fromColor = (color?.images ?? []).filter(Boolean)
+  // Only use colour/variant images that still exist on the product gallery
+  const fromColor = sanitizeMediaList(color?.images).filter((s) =>
+    filtered.includes(s),
+  )
   const fromVariants = (product.variants ?? [])
-    .filter((v) => v.color === colorName && v.image)
+    .filter(
+      (v) =>
+        v.color === colorName &&
+        typeof v.image === 'string' &&
+        filtered.includes(v.image),
+    )
     .map((v) => v.image as string)
 
   const ordered: string[] = []
@@ -190,14 +228,15 @@ export function galleryForColor(
   }
 
   if (ordered.length) {
+    // Shared: cover (if not colour-specific elsewhere), videos, and "All colours" stills
     for (const src of filtered) {
       if (seen.has(src)) continue
-      // Keep videos + unassigned stills; hide stills owned by another colour
       if (assignedToOther.has(src) && !looksLikeVideo(src)) continue
+      // Skip other-colour stills; allow videos + unassigned stills
       seen.add(src)
       ordered.push(src)
     }
-    return ordered
+    return withCoverFirst(ordered, product.coverImage)
   }
 
   // No explicit mapping yet: if each colour has a matching still by index, use that
@@ -208,7 +247,10 @@ export function galleryForColor(
     if (idx >= 0 && stills[idx]) {
       const primary = stills[idx]!
       const videos = filtered.filter(looksLikeVideo)
-      return [primary, ...videos.filter((v) => v !== primary)]
+      return withCoverFirst(
+        [primary, ...videos.filter((v) => v !== primary)],
+        product.coverImage,
+      )
     }
   }
 
@@ -220,6 +262,27 @@ export function primaryImageForColor(
   product: Product,
   colorName?: string | null,
 ): string | undefined {
+  if (
+    product.coverImage &&
+    sanitizeMediaList(product.images).includes(product.coverImage) &&
+    !looksLikeVideo(product.coverImage)
+  ) {
+    // Cover wins when it belongs to this colour or is unassigned
+    const color = (product.colors ?? []).find((c) => c.name === colorName)
+    const colorImgs = sanitizeMediaList(color?.images)
+    const assignedElsewhere = (product.colors ?? []).some(
+      (c) =>
+        c.name !== colorName &&
+        sanitizeMediaList(c.images).includes(product.coverImage!),
+    )
+    if (
+      !assignedElsewhere ||
+      colorImgs.includes(product.coverImage) ||
+      colorImgs.length === 0
+    ) {
+      return product.coverImage
+    }
+  }
   const gallery = galleryForColor(product, colorName)
   return gallery.find((src) => !looksLikeVideo(src)) ?? gallery[0]
 }
@@ -905,14 +968,31 @@ export function normalizeProduct(raw: Partial<Product> & { id: string }): Produc
     rating: raw.rating ?? base?.rating ?? 4.8,
     reviewCount: raw.reviewCount ?? base?.reviewCount ?? 0,
     description: raw.description ?? base?.description ?? '',
-    colors: raw.colors ?? base?.colors ?? [],
+    colors: (raw.colors ?? base?.colors ?? []).map((c) => ({
+      ...c,
+      images: sanitizeMediaList(c.images),
+    })),
     features: raw.features ?? base?.features ?? [],
-    images: raw.images ?? base?.images ?? [],
+    images: withCoverFirst(
+      sanitizeMediaList(raw.images ?? base?.images ?? []),
+      raw.coverImage ?? base?.coverImage,
+    ),
+    coverImage: (() => {
+      const imgs = sanitizeMediaList(raw.images ?? base?.images ?? [])
+      const cover = raw.coverImage ?? base?.coverImage
+      return cover && imgs.includes(cover) ? cover : imgs[0]
+    })(),
     gradient: raw.gradient ?? base?.gradient ?? 'from-zinc-900 to-black',
     category: productLine,
     productLine,
     shopCategory,
-    variants: raw.variants ?? base?.variants ?? [],
+    variants: (raw.variants ?? base?.variants ?? []).map((v) => ({
+      ...v,
+      image:
+        typeof v.image === 'string' && v.image.trim()
+          ? v.image.trim()
+          : undefined,
+    })),
     video: raw.video ?? base?.video,
     status: raw.status === 'draft' ? 'draft' : 'published',
     brand: raw.brand ?? base?.brand ?? 'Litt Luxury',

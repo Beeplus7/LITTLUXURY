@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Heart, Minus, Plus, Star } from 'lucide-react'
 import { Reviews } from '@/components/Reviews'
 import { Footer } from '@/components/Footer'
+import { ProductGallery } from '@/components/ProductGallery'
 import { ProductMedia } from '@/components/ProductMedia'
 import { ProductShareButtons } from '@/components/ProductShareButtons'
 import { ProductInfoAccordions } from '@/components/ProductInfoAccordions'
@@ -44,7 +45,6 @@ export default function ProductPage() {
   const [color, setColor] = useState('')
   const [size, setSize] = useState('')
   const [qty, setQty] = useState(1)
-  const [activeImage, setActiveImage] = useState(0)
 
   const selectedColor = useMemo(() => {
     if (!product) return null
@@ -99,10 +99,6 @@ export default function ProductPage() {
   }, [product, selectedColor?.name])
 
   useEffect(() => {
-    setActiveImage(0)
-  }, [product?.id, selectedColor?.name])
-
-  useEffect(() => {
     if (!product) return
     const title =
       product.seoTitle?.trim() ||
@@ -135,13 +131,12 @@ export default function ProductPage() {
     )
   }
 
-  const current = gallery[activeImage] ?? gallery[0]
   const cartImage =
     (selectedColor
       ? primaryImageForColor(product, selectedColor.name)
       : undefined) ??
     gallery.find((src) => !isVideoSrc(src)) ??
-    current ??
+    gallery[0] ??
     '/assets/fringe-hero.png'
   const colors = product.colors ?? []
   const features = product.features ?? []
@@ -185,47 +180,14 @@ export default function ProductPage() {
   return (
     <div>
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-8 md:grid-cols-2 md:px-10 md:py-12">
-        <div>
-          <div
-            className={cn(
-              'relative aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br',
-              product.gradient,
-            )}
-          >
-            {current ? (
-              <ProductMedia
-                src={current}
-                alt={product.name}
-                className="h-full w-full"
-                autoPlay
-              />
-            ) : null}
-            {compareAt > displayPrice ? (
-              <span className="absolute left-3 top-3 rounded-full bg-[#D4AF37] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-black">
-                Sale
-              </span>
-            ) : null}
-          </div>
-          {gallery.length > 1 ? (
-            <div className="mt-3 flex gap-2 overflow-x-auto">
-              {gallery.map((src, i) => (
-                <button
-                  key={`${src}-${i}`}
-                  type="button"
-                  onClick={() => setActiveImage(i)}
-                  className={cn(
-                    'h-16 w-14 shrink-0 overflow-hidden rounded-xl border',
-                    i === activeImage
-                      ? 'border-[#D4AF37]'
-                      : 'border-white/10 opacity-70',
-                  )}
-                >
-                  <ProductMedia src={src} thumb className="h-full w-full" />
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <ProductGallery
+          images={gallery}
+          alt={product.name}
+          gradient={product.gradient}
+          saleBadge={compareAt > displayPrice}
+          resetKey={`${product.id}:${selectedColor?.name ?? ''}`}
+          initialIndex={0}
+        />
 
         <div>
           <button

@@ -22,12 +22,15 @@ import {
   isDraftProduct,
   isPublishedProduct,
   productLineForShopCategory,
+  sanitizeMediaList,
   sizesForShopCategory,
   slugify,
+  withCoverFirst,
   type Product,
   type ProductLine,
   type ProductVariant,
 } from '@/data/products'
+import { uploadShopMedia } from '@/lib/shopSyncClient'
 import { SHOP_CATEGORIES, type ShopCategoryId } from '@/data/categories'
 import { MediaPickerModal } from '@/components/MediaPickerModal'
 import { ProductMedia } from '@/components/ProductMedia'
@@ -60,6 +63,17 @@ type DraftVariant = {
   stock: number
   sku: string
   image?: string
+}
+
+function actorEmail(): string | null {
+  try {
+    const raw = localStorage.getItem('littluxry_auth')
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { email?: string }
+    return parsed.email?.trim().toLowerCase() || null
+  } catch {
+    return null
+  }
 }
 
 function buildImageColorMap(product: Product): Record<string, string> {
@@ -322,18 +336,27 @@ function ProductEditorModal({
   }
 
   function addImages(urls: string[]) {
-    if (!urls.length) return
+    const clean = sanitizeMediaList(urls)
+    if (!clean.length) return
     const assignColor = variantDraft.color.trim()
-    setForm((f) => ({
-      ...f,
-      images: [...f.images, ...urls]
-        .filter((v, i, a) => a.indexOf(v) === i)
-        .slice(0, MAX_PRODUCT_IMAGES),
-    }))
+    setForm((f) => {
+      const images = sanitizeMediaList([...f.images, ...clean]).slice(
+        0,
+        MAX_PRODUCT_IMAGES,
+      )
+      return {
+        ...f,
+        images,
+        coverImage:
+          f.coverImage && images.includes(f.coverImage)
+            ? f.coverImage
+            : images.find((s) => !isVideoSrc(s)) || f.coverImage,
+      }
+    })
     if (assignColor) {
       setImageColorMap((m) => {
         const next = { ...m }
-        for (const src of urls) {
+        for (const src of clean) {
           if (!isVideoSrc(src) && !next[src]) next[src] = assignColor
         }
         return next
@@ -342,15 +365,36 @@ function ProductEditorModal({
   }
 
   function removeImage(src: string) {
-    setForm((f) => ({
-      ...f,
-      images: f.images.filter((img) => img !== src),
-    }))
+    setForm((f) => {
+      const images = sanitizeMediaList(f.images.filter((img) => img !== src))
+      const coverImage =
+        f.coverImage === src
+          ? images.find((s) => !isVideoSrc(s))
+          : f.coverImage && images.includes(f.coverImage)
+            ? f.coverImage
+            : images.find((s) => !isVideoSrc(s))
+      const next = { ...f, images, coverImage }
+      if (f.video === src) delete next.video
+      return next
+    })
     setImageColorMap((m) => {
       const next = { ...m }
       delete next[src]
       return next
     })
+  }
+
+  function setCoverImage(src: string) {
+    if (isVideoSrc(src)) {
+      toast('Pick a photo for the front view (not a video)')
+      return
+    }
+    setForm((f) => ({
+      ...f,
+      coverImage: src,
+      images: withCoverFirst(f.images, src),
+    }))
+    toast('Front product image set')
   }
 
   function addFromLibrary(items: MediaItem[]) {
@@ -393,10 +437,14 @@ function ProductEditorModal({
         toast(`Image limit reached (${MAX_PRODUCT_IMAGES})`)
         return
       }
+      const email = actorEmail()
       const loaded: string[] = []
       for (const file of Array.from(files).slice(0, room)) {
-        // IndexedDB refs — data URLs get stripped from localStorage on publish
-        loaded.push(await saveLocalImage(file))
+        // Prefer server upload so images show on every device (not blank local-media tiles)
+        let src: string | null = null
+        if (email) src = await uploadShopMedia(email, file, file.name)
+        if (!src) src = await saveLocalImage(file)
+        loaded.push(src)
       }
       addImages(loaded)
       if (!form.name && files[0]) {
@@ -418,15 +466,18 @@ function ProductEditorModal({
     if (!file) return
     setUploadingVideo(true)
     try {
-      // Store in IndexedDB so publish works (data URLs get stripped from localStorage)
-      const ref = await saveLocalVideo(file)
+      const email = actorEmail()
+      let ref: string | null = null
+      if (email) ref = await uploadShopMedia(email, file, file.name)
+      if (!ref) ref = await saveLocalVideo(file)
       setForm((f) => {
-        const images = [...f.images.filter((src) => src !== f.video), ref]
-          .filter((v, i, a) => a.indexOf(v) === i)
-          .slice(0, MAX_PRODUCT_IMAGES)
+        const images = sanitizeMediaList([
+          ...f.images.filter((src) => src !== f.video),
+          ref!,
+        ]).slice(0, MAX_PRODUCT_IMAGES)
         return {
           ...f,
-          video: ref,
+          video: ref!,
           images,
           name:
             f.name ||
@@ -449,8 +500,10 @@ function ProductEditorModal({
     }
 
     // Move any legacy data-URL media into IndexedDB before catalog persist
-    let images = await persistInlineMediaSrcs([...form.images])
-    let video = form.video
+    let images = sanitizeMediaList(
+      await persistInlineMediaSrcs(sanitizeMediaList(form.images)),
+    )
+    let video = form.video?.trim() || undefined
     if (video?.startsWith('data:') && !isLocalMediaRef(video)) {
       const [migrated] = await persistInlineMediaSrcs([video])
       video = migrated || undefined
@@ -464,7 +517,7 @@ function ProductEditorModal({
 
     // Ensure product video also appears in the image gallery container
     if (video && !images.includes(video)) {
-      images = [...images, video].slice(0, MAX_PRODUCT_IMAGES)
+      images = sanitizeMediaList([...images, video]).slice(0, MAX_PRODUCT_IMAGES)
     } else {
       images = images.slice(0, MAX_PRODUCT_IMAGES)
     }
@@ -474,6 +527,13 @@ function ProductEditorModal({
       toast('Add media before publishing — uploads are no longer replaced with defaults')
       return null
     }
+
+    const coverImage = (() => {
+      const cover = form.coverImage?.trim()
+      if (cover && images.includes(cover) && !isVideoSrc(cover)) return cover
+      return images.find((s) => !isVideoSrc(s)) || images[0]
+    })()
+    images = withCoverFirst(images, coverImage)
 
     const baseSlug = slugify(form.name) || `product-${Date.now()}`
     const id = form.id || baseSlug
@@ -491,7 +551,10 @@ function ProductEditorModal({
     )
 
     // Auto-assign stills to colours 1:1 when merchant hasn't tagged images yet
-    const colorAssign = { ...imageColorMap }
+    const colorAssign: Record<string, string> = {}
+    for (const [src, colorName] of Object.entries(imageColorMap)) {
+      if (images.includes(src) && colorName) colorAssign[src] = colorName
+    }
     const tagged = Object.values(colorAssign).some(Boolean)
     if (!tagged && colorNamesFromVariants.length > 1) {
       const stills = images.filter((s) => !isVideoSrc(s))
@@ -530,6 +593,9 @@ function ProductEditorModal({
     ).map((v) => {
       const colorName = v.color || 'Default'
       const colorImages = imagesByColor.get(colorName)
+      const variantImage =
+        colorImages?.[0] ||
+        (v.image && images.includes(v.image) ? v.image : undefined)
       return {
         id: `${id}-${slugify(colorName) || 'clr'}-${slugify(v.size) || 'sz'}-${v.key.slice(-4)}`,
         color: colorName,
@@ -538,7 +604,7 @@ function ProductEditorModal({
         price: Number(v.price) || Number(form.price) || 0,
         stock: Number(v.stock) || 0,
         sku: v.sku || `LL-${baseSlug.slice(0, 6).toUpperCase()}`,
-        image: colorImages?.[0] || v.image,
+        image: variantImage,
       }
     })
 
@@ -578,6 +644,7 @@ function ProductEditorModal({
       productLine: line,
       shopCategory: form.shopCategory,
       images,
+      coverImage,
       video: video || undefined,
       status: publish ? 'published' : 'draft',
       brand: (form.brand || 'Litt Luxury').trim(),
@@ -1093,20 +1160,28 @@ function ProductEditorModal({
           {form.images.length || form.video ? (
             <div className="mt-4 space-y-3">
               <p className="text-[11px] text-[#b8b0a4]">
-                Assign each photo to a colour so the shop gallery switches when
-                customers pick that swatch.
+                Set one photo as the front view, and optionally assign colours so
+                the shop gallery switches with each swatch.
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {form.images.map((src) => {
+                {sanitizeMediaList(form.images).map((src) => {
                   const colorOptions = Array.from(
                     new Set(
                       variants.map((v) => v.color).filter(Boolean),
                     ),
                   )
+                  const isFront =
+                    (form.coverImage ||
+                      form.images.find((s) => !isVideoSrc(s))) === src
                   return (
                     <div
                       key={src.slice(0, 80)}
-                      className="overflow-hidden rounded-xl border border-white/10 bg-black"
+                      className={cn(
+                        'overflow-hidden rounded-xl border bg-black',
+                        isFront
+                          ? 'border-[#D4AF37]'
+                          : 'border-white/10',
+                      )}
                     >
                       <div className="group relative aspect-square">
                         <ProductMedia
@@ -1114,6 +1189,11 @@ function ProductEditorModal({
                           thumb
                           className="h-full w-full"
                         />
+                        {isFront ? (
+                          <span className="absolute left-1 top-1 rounded bg-[#D4AF37] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-black">
+                            Front
+                          </span>
+                        ) : null}
                         {isVideoSrc(src) ? (
                           <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white">
                             Video
@@ -1121,21 +1201,7 @@ function ProductEditorModal({
                         ) : null}
                         <button
                           type="button"
-                          onClick={() => {
-                            removeImage(src)
-                            setImageColorMap((m) => {
-                              const next = { ...m }
-                              delete next[src]
-                              return next
-                            })
-                            if (form.video === src) {
-                              setForm((f) => {
-                                const next = { ...f }
-                                delete next.video
-                                return next
-                              })
-                            }
-                          }}
+                          onClick={() => removeImage(src)}
                           className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-white opacity-90 hover:bg-red-500/80"
                           aria-label="Remove media"
                         >
@@ -1143,26 +1209,40 @@ function ProductEditorModal({
                         </button>
                       </div>
                       {!isVideoSrc(src) ? (
-                        <label className="block border-t border-white/10 px-2 py-1.5 text-[10px] uppercase tracking-wider text-[#6a655c]">
-                          Colour
-                          <select
-                            value={imageColorMap[src] || ''}
-                            onChange={(e) =>
-                              setImageColorMap((m) => ({
-                                ...m,
-                                [src]: e.target.value,
-                              }))
-                            }
-                            className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-950 px-2 py-1.5 text-[11px] normal-case tracking-normal text-[#e8e6e1]"
+                        <div className="space-y-1.5 border-t border-white/10 px-2 py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setCoverImage(src)}
+                            className={cn(
+                              'w-full rounded-lg px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider',
+                              isFront
+                                ? 'bg-[#D4AF37]/20 text-[#D4AF37]'
+                                : 'border border-white/15 text-[#b8b0a4] hover:border-[#D4AF37]/40',
+                            )}
                           >
-                            <option value="">All colours</option>
-                            {colorOptions.map((name) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                            {isFront ? 'Front view' : 'Set as front'}
+                          </button>
+                          <label className="block text-[10px] uppercase tracking-wider text-[#6a655c]">
+                            Colour
+                            <select
+                              value={imageColorMap[src] || ''}
+                              onChange={(e) =>
+                                setImageColorMap((m) => ({
+                                  ...m,
+                                  [src]: e.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-950 px-2 py-1.5 text-[11px] normal-case tracking-normal text-[#e8e6e1]"
+                            >
+                              <option value="">All colours</option>
+                              {colorOptions.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
                       ) : null}
                     </div>
                   )

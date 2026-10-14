@@ -13,6 +13,8 @@ import {
 import {
   initialProducts,
   normalizeProduct,
+  sanitizeMediaList,
+  withCoverFirst,
   type Product,
   type ProductVariant,
 } from '@/data/products'
@@ -84,21 +86,25 @@ function isDataUrl(src: string | undefined): boolean {
 
 function stripHeavyMedia(products: Product[]): Product[] {
   return products.map((p) => {
-    const kept = (p.images ?? [])
+    const kept = sanitizeMediaList(p.images)
       .filter((src) => !isDataUrl(src) || isLocalMediaRef(src))
       .slice(0, 24)
     const video =
       p.video && isDataUrl(p.video) && !isLocalMediaRef(p.video)
         ? undefined
         : p.video
-    const images = kept.length
-      ? kept
-      : video
-        ? [video]
-        : [PLACEHOLDER_IMAGE]
+    const images = withCoverFirst(
+      kept.length ? kept : video ? [video] : [PLACEHOLDER_IMAGE],
+      p.coverImage,
+    )
     return {
       ...p,
       images,
+      coverImage:
+        p.coverImage && images.includes(p.coverImage)
+          ? p.coverImage
+          : images.find((s) => !s.startsWith('data:') && !isLocalMediaRef(s)) ||
+            images[0],
       video,
     }
   })
@@ -324,9 +330,17 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
 
   const addProduct = useCallback(
     (product: Product): boolean => {
+      const images = withCoverFirst(
+        sanitizeMediaList(product.images),
+        product.coverImage,
+      )
       const safe: Product = {
         ...product,
-        images: Array.isArray(product.images) ? product.images : [],
+        images,
+        coverImage:
+          product.coverImage && images.includes(product.coverImage)
+            ? product.coverImage
+            : images[0],
         colors: Array.isArray(product.colors) ? product.colors : [],
         features: Array.isArray(product.features) ? product.features : [],
         variants: Array.isArray(product.variants) ? product.variants : [],

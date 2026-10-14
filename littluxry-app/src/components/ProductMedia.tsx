@@ -1,8 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Play } from 'lucide-react'
 import { useResolvedMediaUrl } from '@/hooks/useResolvedMediaUrl'
-import { isVideoSrc } from '@/lib/localMediaStore'
+import { isLocalMediaRef, isVideoSrc } from '@/lib/localMediaStore'
 import { cn } from '@/lib/cn'
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
   /** compact thumb vs main hero */
   thumb?: boolean
   autoPlay?: boolean
+  onError?: () => void
 }
 
 export function ProductMedia({
@@ -20,12 +22,18 @@ export function ProductMedia({
   className,
   thumb = false,
   autoPlay = true,
+  onError,
 }: Props) {
   const url = useResolvedMediaUrl(src)
   const video = isVideoSrc(src)
 
+  useEffect(() => {
+    // IndexedDB-only refs that don't resolve on this device → drop from gallery
+    if (!url && isLocalMediaRef(src)) onError?.()
+  }, [url, src, onError])
+
   if (!url) {
-    return <div className={cn('bg-zinc-900', className)} />
+    return <div className={cn('bg-zinc-900', className)} aria-hidden />
   }
 
   if (video) {
@@ -40,6 +48,7 @@ export function ProductMedia({
           controls={!thumb}
           preload="metadata"
           className="h-full w-full object-cover"
+          onError={() => onError?.()}
         />
         {thumb ? (
           <span className="pointer-events-none absolute inset-0 grid place-items-center bg-black/25">
@@ -52,6 +61,11 @@ export function ProductMedia({
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt={alt} className={cn('h-full w-full object-cover', className)} />
+    <img
+      src={url}
+      alt={alt}
+      className={cn('h-full w-full object-cover', className)}
+      onError={() => onError?.()}
+    />
   )
 }
