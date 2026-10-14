@@ -60,6 +60,28 @@ async function getBlob(key: string): Promise<Blob | null> {
   return blob
 }
 
+async function deleteBlob(key: string): Promise<void> {
+  if (!isLocalMediaRef(key)) return
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    tx.objectStore(STORE).delete(key)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error || new Error('IndexedDB delete failed'))
+  })
+  db.close()
+}
+
+/** Remove an IndexedDB local-media blob (no-op for normal paths). */
+export async function deleteLocalMedia(src: string | undefined | null): Promise<void> {
+  if (!src || !isLocalMediaRef(src)) return
+  try {
+    await deleteBlob(src)
+  } catch {
+    /* ignore missing keys */
+  }
+}
+
 function newId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()

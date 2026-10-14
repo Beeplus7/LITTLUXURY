@@ -2,6 +2,7 @@
 
 import type { MediaItem } from '@/data/media'
 import {
+  deleteLocalMedia,
   isLocalMediaRef,
   isVideoSrc,
   persistInlineMediaSrcs,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/localMediaStore'
 
 const STORAGE_KEY = 'littluxry_user_media'
+const HIDDEN_KEY = 'littluxry_media_hidden'
 const MAX_ITEMS = 200
 
 function readRaw(): MediaItem[] {
@@ -94,4 +96,70 @@ export async function migrateUserMediaDataUrls(): Promise<void> {
     next.push(item)
   }
   if (changed) writeRaw(next)
+}
+
+function readHiddenIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((x): x is string => typeof x === 'string'))
+  } catch {
+    return new Set()
+  }
+}
+
+function writeHiddenIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(ids)))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getHiddenMediaIds(): string[] {
+  return Array.from(readHiddenIds())
+}
+
+/** Hide a built-in/core library asset from Media Library + picker. */
+export function hideLibraryMedia(id: string): void {
+  const ids = readHiddenIds()
+  ids.add(id)
+  writeHiddenIds(ids)
+}
+
+/**
+ * Delete a user upload (IndexedDB + list), or hide a core/built-in asset.
+ */
+export async function deleteLibraryMedia(item: MediaItem): Promise<{
+  kind: 'upload' | 'hidden'
+}> {
+  const userItems = readRaw()
+  const target = userItems.find((m) => m.id === item.id)
+  if (target) {
+    writeRaw(userItems.filter((m) => m.id !== item.id))
+    await deleteLocalMedia(target.src)
+    return { kind: 'upload' }
+  }
+
+  // Legacy uploads may only be tagged — still try to drop blob
+  if ((item.tags ?? []).includes('upload') || isLocalMediaRef(item.src)) {
+    writeRaw(userItems.filter((m) => m.src !== item.src))
+    await deleteLocalMedia(item.src)
+    return { kind: 'upload' }
+  }
+
+  hideLibraryMedia(item.id)
+  return { kind: 'hidden' }
+}
+
+export async function clearAllUserUploads(): Promise<number> {
+  const items = readRaw()
+  for (const item of items) {
+    await deleteLocalMedia(item.src)
+  }
+  writeRaw([])
+  return items.length
 }

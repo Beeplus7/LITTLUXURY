@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Library, Play, Search, X } from 'lucide-react'
 import { mediaLibrary, type MediaItem } from '@/data/media'
-import { getUserMediaLibrary } from '@/lib/userMediaLibrary'
+import {
+  getHiddenMediaIds,
+  getUserMediaLibrary,
+} from '@/lib/userMediaLibrary'
 import { ProductMedia } from '@/components/ProductMedia'
 import { cn } from '@/lib/cn'
 
@@ -52,10 +55,13 @@ export function MediaPickerModal({
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-  const [library, setLibrary] = useState<MediaItem[]>(() => [
-    ...getUserMediaLibrary(),
-    ...mediaLibrary,
-  ])
+  const [library, setLibrary] = useState<MediaItem[]>(() => {
+    const hidden = new Set(getHiddenMediaIds())
+    return [
+      ...getUserMediaLibrary(),
+      ...mediaLibrary.filter((m) => !hidden.has(m.id)),
+    ]
+  })
 
   useEffect(() => {
     if (!open) return
@@ -63,7 +69,11 @@ export function MediaPickerModal({
     setQuery('')
     setFilter('all')
     setVisibleCount(PAGE_SIZE)
-    setLibrary([...getUserMediaLibrary(), ...mediaLibrary])
+    const hidden = new Set(getHiddenMediaIds())
+    setLibrary([
+      ...getUserMediaLibrary(),
+      ...mediaLibrary.filter((m) => !hidden.has(m.id)),
+    ])
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
