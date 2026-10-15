@@ -117,6 +117,34 @@ pm2 start "$APP_DIR/ecosystem.config.cjs"
 pm2 save
 
 # Keep existing SSL nginx if certbot already configured; refresh proxy block carefully
+# Always ensure runtime uploads are served from disk (Next won't serve
+# files written to public/ after `next start`).
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/etc/nginx/sites-available/littluxry')
+if not p.exists():
+    raise SystemExit(0)
+t = p.read_text()
+alias = 'alias /opt/littluxry/littluxry-app/public/assets/uploads/;'
+if alias in t:
+    print('nginx uploads alias ok')
+else:
+    block = '''
+    # Runtime product uploads (Next does not serve post-start public/ files)
+    location /assets/uploads/ {
+        alias /opt/littluxry/littluxry-app/public/assets/uploads/;
+        expires 30d;
+        add_header Cache-Control "public";
+        access_log off;
+    }
+'''
+    needle = '    location / {'
+    if needle in t:
+        t = t.replace(needle, block + '\n' + needle, 1)
+        p.write_text(t)
+        print('Added nginx uploads alias')
+PY
+
 if [[ ! -f /etc/nginx/sites-available/littluxry ]]; then
   cat > /etc/nginx/sites-available/littluxry <<EOF
 server {
@@ -125,6 +153,12 @@ server {
     server_name ${DOMAIN} ${DOMAIN_WWW};
     client_max_body_size 32m;
     large_client_header_buffers 4 32k;
+    location /assets/uploads/ {
+        alias ${APP_DIR}/littluxry-app/public/assets/uploads/;
+        expires 30d;
+        add_header Cache-Control "public";
+        access_log off;
+    }
     location / {
         proxy_pass http://127.0.0.1:${WEB_PORT};
         proxy_http_version 1.1;
