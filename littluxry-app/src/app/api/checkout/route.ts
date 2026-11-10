@@ -155,7 +155,9 @@ export async function POST(request: Request) {
           : undefined,
         application_context: {
           brand_name: 'LITT LUXURY',
-          landing_page: 'LOGIN',
+          // BILLING opens guest card checkout first (Visa/MC/Amex) — not PayPal login only.
+          // PayPal login remains available as a secondary option on that page.
+          landing_page: 'BILLING',
           user_action: 'PAY_NOW',
           shipping_preference: 'GET_FROM_FILE',
           return_url: `${origin}/checkout/success`,
