@@ -39,7 +39,7 @@ async function readMap(): Promise<Record<string, RecoveryRecord>> {
   }
 }
 
-function publicOrigin(request: Request) {
+function publicOrigin() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
   if (env) return env
   return 'https://litt-luxury.com'
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const origin = publicOrigin(request)
+  const origin = publicOrigin()
   const mail = await sendCartRecoveryEmail({
     to: email,
     items: items.map((i) => ({
