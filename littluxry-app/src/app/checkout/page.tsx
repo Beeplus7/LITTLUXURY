@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, type FormEvent } from 'react'
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useCart } from '@/context/CartContext'
@@ -28,12 +28,45 @@ function CheckoutInner() {
   const [error, setError] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const cancelRecoverySent = useRef(false)
 
   useEffect(() => {
-    if (searchParams.get('canceled') === '1') {
-      toast('Checkout canceled — your cart is still here')
+    if (searchParams.get('canceled') !== '1') return
+    toast('Checkout canceled — your cart is still here')
+    if (cancelRecoverySent.current) return
+    let saved = ''
+    try {
+      saved = localStorage.getItem('littluxry_cart_recovery_email') || ''
+    } catch {
+      /* ignore */
     }
-  }, [searchParams, toast])
+    const to = (email.trim() || saved).toLowerCase()
+    if (!to.includes('@') || !cartItems.length) return
+    cancelRecoverySent.current = true
+    void fetch('/api/cart-recovery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: to,
+        items: cartItems,
+        total,
+        source: 'checkout-canceled',
+      }),
+    }).catch(() => undefined)
+  }, [searchParams, toast, email, cartItems, total])
+
+  useEffect(() => {
+    if (email.trim().includes('@')) {
+      try {
+        localStorage.setItem(
+          'littluxry_cart_recovery_email',
+          email.trim().toLowerCase(),
+        )
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [email])
 
   async function payWithPayPal(e?: FormEvent) {
     e?.preventDefault()
@@ -88,7 +121,8 @@ function CheckoutInner() {
         <div>
           <h1 className="serif text-4xl">Checkout</h1>
           <p className="mt-2 text-sm text-[#b8b0a4]">
-            Secure payment via PayPal. You’ll finish on PayPal’s checkout page.
+            Pay with Visa or credit using PayPal. You’ll finish securely on
+            PayPal’s page.
           </p>
           <form className="mt-8 space-y-3" onSubmit={(e) => void payWithPayPal(e)}>
             <label className="block text-[12px] text-[#b8b0a4]">
@@ -143,10 +177,13 @@ function CheckoutInner() {
               disabled={loading}
               className="mt-4 w-full rounded-full bg-[#0070BA] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-60"
             >
-              {loading ? 'Opening PayPal…' : `Pay $${total} with PayPal`}
+              {loading
+                ? 'Opening PayPal…'
+                : `Pay $${total} with Visa or credit using PayPal`}
             </button>
             <p className="text-center text-[11px] text-[#6a655c]">
-              PayPal balance · linked cards · Pay Later when available
+              Visa · Mastercard · Amex · PayPal balance · Pay Later when
+              available
             </p>
           </form>
         </div>

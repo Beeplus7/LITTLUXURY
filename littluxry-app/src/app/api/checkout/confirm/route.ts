@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
-import {
-  orderEmailFromPayPalOrder,
-  sendOrderConfirmationEmail,
-} from '@/lib/orderEmail'
+import { orderEmailFromPayPalOrder } from '@/lib/orderEmail'
+import { fulfillPaidOrder } from '@/lib/fulfillPaidOrder'
 import {
   paypalConfigured,
   paypalFetch,
@@ -87,14 +85,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const result = await sendOrderConfirmationEmail(payload)
-    if (!result.ok) {
+    const result = await fulfillPaidOrder(payload)
+    if (!result.customerMail.ok && !result.customerMail.skipped) {
       return NextResponse.json(
         {
           ok: false,
           paypalReceipt: true,
-          error: result.error,
-          hint: 'PayPal may still email a receipt. Add RESEND_API_KEY for branded LITT LUXURY mail.',
+          orderId: result.order.id,
+          adminNotified: Boolean(result.adminMail.ok),
+          error: result.customerMail.error,
+          hint: 'Order saved in admin. Add RESEND_API_KEY (or SMTP) for branded confirmation email.',
         },
         { status: 503 },
       )
@@ -102,10 +102,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      skipped: result.skipped,
-      provider: 'provider' in result ? result.provider : undefined,
+      skipped: result.customerMail.skipped,
+      provider:
+        result.customerMail.ok && 'provider' in result.customerMail
+          ? result.customerMail.provider
+          : undefined,
       to: payload.to,
-      orderId: order.id,
+      orderId: result.order.id,
+      adminNotified: Boolean(result.adminMail.ok),
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Confirm failed'

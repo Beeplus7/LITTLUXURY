@@ -142,9 +142,9 @@ export default function CartPage() {
             </div>
             <Link
               href="/checkout"
-              className="block rounded-full bg-[#D4AF37] py-3.5 text-center text-[12px] font-semibold uppercase tracking-[0.16em] text-black"
+              className="block rounded-full bg-[#0070BA] py-3.5 text-center text-[12px] font-semibold uppercase tracking-[0.16em] text-white"
             >
-              Checkout
+              Pay with Visa or credit using PayPal
             </Link>
           </div>
         )}

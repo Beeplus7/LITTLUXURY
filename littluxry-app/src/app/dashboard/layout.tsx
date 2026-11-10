@@ -84,6 +84,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [paymentAlerts, setPaymentAlerts] = useState(0)
   const status = searchParams.get('status')
   const viewingSaved =
     pathname.startsWith('/dashboard/products') &&
@@ -101,6 +102,37 @@ function DashboardShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname])
+
+  useEffect(() => {
+    if (!hydrated || !isShopAdmin || !user?.email) return
+    let cancelled = false
+    const pull = async () => {
+      try {
+        const res = await fetch('/api/admin-notifications', {
+          headers: { 'x-shop-actor': user.email },
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as {
+          unread?: number
+          unpaidOrders?: number
+        }
+        if (!cancelled) {
+          setPaymentAlerts(
+            Math.max(data.unpaidOrders || 0, data.unread || 0),
+          )
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    void pull()
+    const id = window.setInterval(() => void pull(), 45_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [hydrated, isShopAdmin, user?.email, pathname])
 
   if (!hydrated) {
     return (
@@ -159,13 +191,15 @@ function DashboardShell({ children }: { children: ReactNode }) {
           const badge =
             item.href === '/dashboard/messages' && unreadCount > 0
               ? String(unreadCount)
-              : item.match === 'saved' && savedCount > 0
-                ? String(savedCount)
-                : showMock && item.href === '/dashboard/orders'
-                  ? DEMO_STATS.ordersBadge
-                  : showMock && item.href === '/dashboard/reviews'
-                    ? DEMO_STATS.reviewsBadge
-                    : item.badge
+              : item.href === '/dashboard/orders' && paymentAlerts > 0
+                ? String(paymentAlerts)
+                : item.match === 'saved' && savedCount > 0
+                  ? String(savedCount)
+                  : showMock && item.href === '/dashboard/orders'
+                    ? DEMO_STATS.ordersBadge
+                    : showMock && item.href === '/dashboard/reviews'
+                      ? DEMO_STATS.reviewsBadge
+                      : item.badge
           return (
             <Link
               key={item.href}
@@ -186,7 +220,9 @@ function DashboardShell({ children }: { children: ReactNode }) {
                 <span
                   className={cn(
                     'rounded-full border px-2 py-0.5 text-[11px]',
-                    item.href === '/dashboard/messages' || item.match === 'saved'
+                    item.href === '/dashboard/messages' ||
+                    item.href === '/dashboard/orders' ||
+                    item.match === 'saved'
                       ? 'border-[#D4AF37]/40 bg-[#D4AF37]/15 text-[#D4AF37]'
                       : 'border-[#2a2a2a] bg-[#1f1f1f] text-[#9a9a9a]',
                   )}

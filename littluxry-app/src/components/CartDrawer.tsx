@@ -151,9 +151,9 @@ export function CartDrawer() {
             <Link
               href="/checkout"
               onClick={() => setCartOpen(false)}
-              className="block rounded-full bg-[#635BFF] py-3 text-center text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:brightness-110"
+              className="block rounded-full bg-[#0070BA] py-3 text-center text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:brightness-110"
             >
-              Checkout with Stripe
+              Pay with Visa or credit using PayPal
             </Link>
             <Link
               href="/cart"

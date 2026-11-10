@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
-import {
-  orderEmailFromPayPalOrder,
-  sendOrderConfirmationEmail,
-} from '@/lib/orderEmail'
+import { orderEmailFromPayPalOrder } from '@/lib/orderEmail'
+import { fulfillPaidOrder } from '@/lib/fulfillPaidOrder'
 import {
   paypalConfigured,
   paypalFetch,
@@ -66,7 +64,6 @@ export async function POST(request: Request) {
               { method: 'POST', json: {} },
             )
           } catch {
-            /* already captured is fine */
             order = await paypalFetch<PayPalOrder>(
               `/v2/checkout/orders/${encodeURIComponent(orderId)}`,
               { method: 'GET' },
@@ -75,12 +72,16 @@ export async function POST(request: Request) {
         }
         const payload = orderEmailFromPayPalOrder(order)
         if (payload) {
-          const result = await sendOrderConfirmationEmail(payload)
-          console.log('[paypal webhook] confirmation email', result)
+          const result = await fulfillPaidOrder(payload)
+          console.log('[paypal webhook] fulfill', {
+            orderId: result.order.id,
+            customer: result.customerMail,
+            admin: result.adminMail,
+          })
         }
       } catch (e) {
         console.error(
-          '[paypal webhook] email failed',
+          '[paypal webhook] fulfill failed',
           e instanceof Error ? e.message : e,
         )
       }

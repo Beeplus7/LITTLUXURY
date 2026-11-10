@@ -235,46 +235,122 @@ async function sendViaSmtp(opts: {
   return { provider: 'smtp' as const, id: info.messageId }
 }
 
+async function sendMail(opts: {
+  to: string[]
+  subject: string
+  html: string
+  text: string
+}) {
+  const viaResend = await sendViaResend(opts)
+  if (viaResend) return { ok: true as const, ...viaResend }
+  const viaSmtp = await sendViaSmtp(opts)
+  if (viaSmtp) return { ok: true as const, ...viaSmtp }
+  return {
+    ok: false as const,
+    error:
+      'No email provider configured. Set RESEND_API_KEY (recommended) or SMTP_HOST/SMTP_USER/SMTP_PASS.',
+  }
+}
+
+export function buildAdminPaymentEmailHtml(payload: OrderEmailPayload) {
+  const rows = payload.lines
+    .map(
+      (line) =>
+        `<tr><td style="padding:8px 0;border-bottom:1px solid #eee">${escapeHtml(line.name)} × ${line.quantity}</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right">${money(line.amount, payload.currency)}</td></tr>`,
+    )
+    .join('')
+  return `<!doctype html><html><body style="font-family:Georgia,serif;background:#0a0a0a;color:#fff;padding:24px">
+  <div style="max-width:560px;margin:0 auto;background:#111;border:1px solid #2a2a2a;border-radius:16px;padding:24px">
+    <div style="color:#D4AF37;letter-spacing:0.18em;font-size:11px;text-transform:uppercase">Admin · payment received</div>
+    <h1 style="margin:12px 0 0;font-weight:400;font-size:26px">New PayPal order</h1>
+    <p style="color:#b8b0a4;font-size:14px">${escapeHtml(payload.customerName || 'Customer')} · ${escapeHtml(payload.to)}</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;background:#faf8f5;border-radius:12px;padding:12px;color:#111">${rows}</table>
+    <p style="margin-top:16px;font-size:22px;color:#D4AF37">Total ${money(payload.total, payload.currency)}</p>
+    <p style="color:#6a655c;font-size:12px">Ref · ${escapeHtml(payload.sessionId)}<br/>Open admin → Orders: https://litt-luxury.com/dashboard/orders</p>
+  </div></body></html>`
+}
+
+export async function sendAdminPaymentEmail(
+  payload: OrderEmailPayload,
+  adminEmails: string[],
+) {
+  const to = Array.from(
+    new Set(adminEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)),
+  )
+  if (!to.length) {
+    return { ok: false as const, skipped: true as const, reason: 'no-admin-email' }
+  }
+  const subject = `Payment received · ${money(payload.total, payload.currency)} · ${payload.to}`
+  const html = buildAdminPaymentEmailHtml(payload)
+  const text = [
+    `New PayPal payment`,
+    `${payload.customerName || 'Customer'} <${payload.to}>`,
+    `Total: ${money(payload.total, payload.currency)}`,
+    `Ref: ${payload.sessionId}`,
+    `Admin: https://litt-luxury.com/dashboard/orders`,
+  ].join('\n')
+  const result = await sendMail({ to, subject, html, text })
+  if (!result.ok) return { ok: false as const, error: result.error }
+  return {
+    ok: true as const,
+    skipped: false as const,
+    provider: result.provider,
+    id: 'id' in result ? result.id : undefined,
+  }
+}
+
 export async function sendOrderConfirmationEmail(payload: OrderEmailPayload) {
   if (await alreadySent(payload.sessionId)) {
     return { ok: true, skipped: true as const, reason: 'already-sent' }
   }
 
-  const notify = process.env.ORDER_EMAIL_NOTIFY?.trim()
-  const to = [payload.to, notify].filter(Boolean) as string[]
-  const uniqueTo = Array.from(new Set(to.map((e) => e.toLowerCase())))
   const subject = `Order confirmed · ${money(payload.total, payload.currency)} · LITT LUXURY`
   const html = buildOrderEmailHtml(payload)
   const text = buildOrderEmailText(payload)
-
-  const viaResend = await sendViaResend({
-    to: uniqueTo,
+  const result = await sendMail({
+    to: [payload.to],
     subject,
     html,
     text,
   })
-  if (viaResend) {
-    await markSent(payload.sessionId)
-    return { ok: true, skipped: false as const, ...viaResend }
+  if (!result.ok) {
+    return { ok: false, skipped: false as const, error: result.error }
   }
-
-  const viaSmtp = await sendViaSmtp({
-    to: uniqueTo,
-    subject,
-    html,
-    text,
-  })
-  if (viaSmtp) {
-    await markSent(payload.sessionId)
-    return { ok: true, skipped: false as const, ...viaSmtp }
-  }
-
+  await markSent(payload.sessionId)
   return {
-    ok: false,
+    ok: true,
     skipped: false as const,
-    error:
-      'No email provider configured. Set RESEND_API_KEY (recommended) or SMTP_HOST/SMTP_USER/SMTP_PASS.',
+    provider: result.provider,
+    id: 'id' in result ? result.id : undefined,
   }
+}
+
+export async function sendCartRecoveryEmail(opts: {
+  to: string
+  items: Array<{ name: string; quantity: number; price: number }>
+  total: number
+  checkoutUrl: string
+}) {
+  const lines = opts.items
+    .map((i) => `- ${i.name} × ${i.quantity}: $${i.price * i.quantity}`)
+    .join('\n')
+  const subject = `Your LITT LUXURY bag is waiting · $${opts.total}`
+  const html = `<!doctype html><html><body style="font-family:Georgia,serif;background:#0a0a0a;padding:24px;color:#fff">
+  <div style="max-width:520px;margin:0 auto;background:#111;border:1px solid #2a2a2a;border-radius:16px;padding:28px">
+    <div style="color:#D4AF37;letter-spacing:0.18em;font-size:11px;text-transform:uppercase">LITT LUXURY</div>
+    <h1 style="font-weight:400;font-size:28px;margin:12px 0 0">Still thinking it over?</h1>
+    <p style="color:#b8b0a4;font-size:14px;line-height:1.5">Your bag is saved. Complete checkout when you’re ready — Visa and credit cards are accepted through PayPal.</p>
+    <pre style="white-space:pre-wrap;background:#faf8f5;color:#111;padding:14px;border-radius:12px;font-size:13px">${escapeHtml(lines)}</pre>
+    <p style="margin:18px 0;font-size:22px;color:#D4AF37">$${opts.total}</p>
+    <a href="${escapeHtml(opts.checkoutUrl)}" style="display:inline-block;background:#0070BA;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-size:12px;letter-spacing:0.14em;text-transform:uppercase">Pay with Visa or credit using PayPal</a>
+  </div></body></html>`
+  const text = [
+    `Your LITT LUXURY bag is waiting`,
+    lines,
+    `Total: $${opts.total}`,
+    `Checkout: ${opts.checkoutUrl}`,
+  ].join('\n')
+  return sendMail({ to: [opts.to], subject, html, text })
 }
 
 export function orderEmailFromCheckoutSession(
