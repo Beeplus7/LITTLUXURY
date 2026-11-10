@@ -10,7 +10,7 @@ import { Footer } from '@/components/Footer'
 function SuccessInner() {
   const params = useSearchParams()
   const { clearCart, setCartOpen } = useCart()
-  const sessionId = params.get('session_id')
+  const orderId = params.get('token') || params.get('orderId') || params.get('session_id')
   const [emailStatus, setEmailStatus] = useState<
     'sending' | 'sent' | 'skipped' | 'error' | 'idle'
   >('idle')
@@ -22,7 +22,7 @@ function SuccessInner() {
   }, [clearCart, setCartOpen])
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!orderId) return
     let cancelled = false
     setEmailStatus('sending')
     void (async () => {
@@ -30,7 +30,7 @@ function SuccessInner() {
         const res = await fetch('/api/checkout/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({ orderId }),
         })
         const data = (await res.json()) as {
           ok?: boolean
@@ -38,7 +38,7 @@ function SuccessInner() {
           to?: string
           error?: string
           hint?: string
-          stripeReceipt?: boolean
+          paypalReceipt?: boolean
         }
         if (cancelled) return
         if (data.ok) {
@@ -54,13 +54,13 @@ function SuccessInner() {
         setEmailNote(
           data.hint ||
             data.error ||
-            'Could not send branded email. Stripe may still send a receipt.',
+            'Could not send branded email. PayPal may still send a receipt.',
         )
       } catch {
         if (!cancelled) {
           setEmailStatus('error')
           setEmailNote(
-            'Could not send branded email. Stripe may still send a receipt.',
+            'Could not send branded email. PayPal may still send a receipt.',
           )
         }
       }
@@ -68,7 +68,7 @@ function SuccessInner() {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [orderId])
 
   return (
     <div>
@@ -82,7 +82,7 @@ function SuccessInner() {
           </p>
           <h1 className="serif mt-2 text-4xl">Thank you</h1>
           <p className="mt-3 text-sm text-[#b8b0a4]">
-            Your Stripe payment went through. We’re sending your order
+            Your PayPal payment went through. We’re sending your order
             confirmation now.
           </p>
 
@@ -102,16 +102,16 @@ function SuccessInner() {
               </p>
               <p className="mt-1 text-[12px] text-[#b8b0a4]">
                 {emailNote ||
-                  (sessionId
+                  (orderId
                     ? 'Preparing your receipt…'
-                    : 'Open this page from Stripe to trigger email.')}
+                    : 'Open this page from PayPal to trigger email.')}
               </p>
             </div>
           </div>
 
-          {sessionId ? (
+          {orderId ? (
             <p className="mt-3 break-all text-[11px] text-[#6a655c]">
-              Ref · {sessionId}
+              Ref · {orderId}
             </p>
           ) : null}
           <div className="mt-8 flex flex-wrap justify-center gap-3">

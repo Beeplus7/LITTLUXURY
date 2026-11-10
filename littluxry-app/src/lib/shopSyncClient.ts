@@ -69,6 +69,8 @@ export async function syncCatalog(
   products: Product[],
   removedIds: string[],
 ): Promise<boolean> {
+  // Never push an empty catalog — protects uploaded products on the server
+  if (!Array.isArray(products) || products.length === 0) return false
   const res = await pushShopState(actorEmail, { products, removedIds })
   return Boolean(res)
 }

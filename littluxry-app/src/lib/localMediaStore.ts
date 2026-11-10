@@ -15,6 +15,8 @@ export function isVideoSrc(src: string | undefined | null): boolean {
   if (src.startsWith(`${LOCAL_MEDIA_PREFIX}video:`)) return true
   if (src.startsWith('data:video')) return true
   const lower = src.toLowerCase().split('?')[0] || ''
+  // Query flag set when a mislabeled upload was repaired server-side
+  if (lower.includes('mediatype=video')) return true
   return (
     lower.endsWith('.mp4') ||
     lower.endsWith('.webm') ||

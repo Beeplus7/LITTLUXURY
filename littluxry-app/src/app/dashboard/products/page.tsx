@@ -40,7 +40,6 @@ import {
   isVideoSrc,
   persistInlineMediaSrcs,
   saveLocalImage,
-  saveLocalVideo,
 } from '@/lib/localMediaStore'
 import {
   productFromExtract,
@@ -467,24 +466,38 @@ function ProductEditorModal({
     setUploadingVideo(true)
     try {
       const email = actorEmail()
-      let ref: string | null = null
-      if (email) ref = await uploadShopMedia(email, file, file.name)
-      if (!ref) ref = await saveLocalVideo(file)
+      if (!email) {
+        toast('Sign in as shop admin before uploading video')
+        return
+      }
+      // Server upload required so the storefront can play it (not device-only IndexedDB)
+      const ref = await uploadShopMedia(email, file, file.name)
+      if (!ref) {
+        toast(
+          'Video upload to server failed — check size (max 40MB) and try MP4',
+        )
+        return
+      }
       setForm((f) => {
-        const images = sanitizeMediaList([
-          ...f.images.filter((src) => src !== f.video),
-          ref!,
-        ]).slice(0, MAX_PRODUCT_IMAGES)
+        // Keep video slot: stills first (capped), video always appended last and kept
+        const stills = sanitizeMediaList(
+          f.images.filter((src) => src !== f.video && !isVideoSrc(src)),
+        ).slice(0, Math.max(0, MAX_PRODUCT_IMAGES - 1))
+        const images = sanitizeMediaList([...stills, ref])
         return {
           ...f,
-          video: ref!,
+          video: ref,
           images,
           name:
             f.name ||
             file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
         }
       })
-      toast('Video uploaded — it will show in the product gallery')
+      toast(
+        ref.endsWith('.mp4')
+          ? 'Video uploaded (MP4) — save/publish to show in shop'
+          : 'Video uploaded — save/publish to show in shop',
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Video upload failed')
     } finally {
@@ -515,9 +528,12 @@ function ProductEditorModal({
       video = kept || video
     }
 
-    // Ensure product video also appears in the image gallery container
-    if (video && !images.includes(video)) {
-      images = sanitizeMediaList([...images, video]).slice(0, MAX_PRODUCT_IMAGES)
+    // Ensure product video is always in the gallery (never sliced off by the 24-cap)
+    if (video) {
+      const stills = images
+        .filter((s) => s !== video && !isVideoSrc(s))
+        .slice(0, Math.max(0, MAX_PRODUCT_IMAGES - 1))
+      images = sanitizeMediaList([...stills, video])
     } else {
       images = images.slice(0, MAX_PRODUCT_IMAGES)
     }
@@ -525,6 +541,15 @@ function ProductEditorModal({
     if (!images.length && !video) {
       setFormError('Add at least one image or video before saving')
       toast('Add media before publishing — uploads are no longer replaced with defaults')
+      return null
+    }
+
+    // Block publishing device-only videos — storefront visitors cannot see them
+    if (video && isLocalMediaRef(video)) {
+      setFormError(
+        'Re-upload the video with Upload video so it saves to the server',
+      )
+      toast('Video is only on this device — re-upload, then publish')
       return null
     }
 

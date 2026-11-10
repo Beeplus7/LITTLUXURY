@@ -13,7 +13,7 @@ const PAYOUTS = [
 
 export function PaymentSettings() {
   const { toast } = useToast()
-  const [paypalConnected, setPaypalConnected] = useState(true)
+  const paypalConnected = Boolean(process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID)
   const [applePay, setApplePay] = useState(true)
   const [googlePay, setGooglePay] = useState(true)
   const [cod, setCod] = useState(false)
@@ -56,67 +56,38 @@ export function PaymentSettings() {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 p-4">
             <div>
-              <p className="font-medium">PayPal</p>
+              <p className="font-medium">PayPal Checkout</p>
               <p className="text-[12px] text-[#b8b0a4]">
                 {paypalConnected
-                  ? 'Connected · owner@littluxry.com'
+                  ? `Live cart payments · client …${(
+                      process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || ''
+                    ).slice(-6) || '····'}`
                   : 'Not connected'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-full border border-white/15 px-3 py-1.5 text-[11px] uppercase tracking-wider"
-                onClick={() => toast('PayPal settings opened')}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className="rounded-full border border-white/15 px-3 py-1.5 text-[11px] uppercase tracking-wider text-red-300"
-                onClick={() => {
-                  setPaypalConnected(false)
-                  toast('PayPal disconnected')
-                }}
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 p-4">
-            <div>
-              <p className="font-medium">Stripe Checkout</p>
-              <p className="text-[12px] text-[#b8b0a4]">
-                Cart pay button opens hosted Stripe Checkout ·{' '}
-                {process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-                  ? `pk …${process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.slice(-6)}`
-                  : 'publishable key optional for hosted checkout'}
               </p>
             </div>
             <button
               type="button"
               onClick={() =>
                 toast(
-                  'Stripe Checkout is live — confirmations email after pay (Resend/SMTP + Stripe receipt)',
+                  'PayPal Checkout is active — confirmations email after pay (Resend/SMTP + PayPal receipt)',
                 )
               }
-              className="rounded-full bg-[#D4AF37] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-black"
+              className="rounded-full bg-[#0070BA] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-white"
             >
-              Stripe ready
+              PayPal ready
             </button>
           </div>
 
           <div className="rounded-2xl border border-white/10 p-4">
             <p className="font-medium">Order confirmation email</p>
             <p className="mt-1 text-[12px] text-[#b8b0a4]">
-              After payment we email a LITT LUXURY confirmation (and Stripe may
+              After payment we email a LITT LUXURY confirmation (and PayPal may
               send its own receipt). Set{' '}
               <span className="text-[#D4AF37]">RESEND_API_KEY</span> +{' '}
               <span className="text-[#D4AF37]">ORDER_EMAIL_FROM</span> in server
               env, webhook:{' '}
               <span className="text-[#e8e6e1]">
-                https://litt-luxury.com/api/stripe/webhook
+                https://litt-luxury.com/api/paypal/webhook
               </span>
             </p>
           </div>
@@ -239,7 +210,6 @@ export function PaymentSettings() {
                 type="button"
                 onClick={() => {
                   setModalOpen(false)
-                  setPaypalConnected(true)
                   toast('Payment method saved')
                 }}
                 className="flex-1 rounded-full bg-[#D4AF37] py-2.5 text-[12px] font-semibold uppercase tracking-wider text-black"

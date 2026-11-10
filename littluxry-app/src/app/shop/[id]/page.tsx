@@ -179,17 +179,19 @@ export default function ProductPage() {
 
   return (
     <div>
-      <div className="mx-auto grid max-w-6xl gap-10 px-5 py-8 md:grid-cols-2 md:px-10 md:py-12">
-        <ProductGallery
-          images={gallery}
-          alt={product.name}
-          gradient={product.gradient}
-          saleBadge={compareAt > displayPrice}
-          resetKey={`${product.id}:${selectedColor?.name ?? ''}`}
-          initialIndex={0}
-        />
+      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-6 md:grid-cols-2 md:gap-10 md:px-10 md:py-12">
+        <div className="min-w-0 max-w-full">
+          <ProductGallery
+            images={gallery}
+            alt={product.name}
+            gradient={product.gradient}
+            saleBadge={compareAt > displayPrice}
+            resetKey={`${product.id}:${selectedColor?.name ?? ''}`}
+            initialIndex={0}
+          />
+        </div>
 
-        <div>
+        <div className="min-w-0">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}

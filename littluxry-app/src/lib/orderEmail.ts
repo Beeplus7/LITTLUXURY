@@ -3,6 +3,7 @@ import path from 'path'
 import nodemailer from 'nodemailer'
 import { Resend } from 'resend'
 import type Stripe from 'stripe'
+import type { PayPalOrder } from '@/lib/paypal'
 
 export type OrderEmailLine = {
   name: string
@@ -111,7 +112,7 @@ export function buildOrderEmailHtml(payload: OrderEmailPayload) {
           .map((x) => escapeHtml(String(x)))
           .join('<br/>')}
       </p>`
-    : `<p style="margin:0;color:#777;font-size:13px">Collected on Stripe Checkout</p>`
+    : `<p style="margin:0;color:#777;font-size:13px">Collected at PayPal Checkout</p>`
 
   return `<!doctype html>
 <html>
@@ -340,6 +341,83 @@ export function orderEmailFromCheckoutSession(
           state: addr.state || undefined,
           postal_code: addr.postal_code || undefined,
           country: addr.country || undefined,
+        }
+      : undefined,
+  }
+}
+
+function parseCustomMeta(raw?: string): {
+  shipRegion?: string
+  customerName?: string
+  email?: string
+} {
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw) as {
+      shipRegion?: string
+      customerName?: string
+      email?: string
+    }
+  } catch {
+    return {}
+  }
+}
+
+export function orderEmailFromPayPalOrder(
+  order: PayPalOrder,
+): OrderEmailPayload | null {
+  const unit = order.purchase_units?.[0]
+  const meta = parseCustomMeta(unit?.custom_id)
+  const to = order.payer?.email_address || meta.email
+  if (!to) return null
+
+  const currency = (
+    unit?.amount?.currency_code || 'USD'
+  ).toLowerCase()
+  const total = Number(unit?.amount?.value || 0)
+  const shippingAmount = Number(unit?.amount?.breakdown?.shipping?.value || 0)
+  const lines: OrderEmailLine[] = (unit?.items || []).map((item) => {
+    const qty = Number(item.quantity || 1)
+    const unitAmount = Number(item.unit_amount?.value || 0)
+    return {
+      name: item.name || 'Item',
+      detail: item.description || undefined,
+      quantity: qty,
+      amount: unitAmount * qty,
+    }
+  })
+
+  const shipRegion = meta.shipRegion
+  const payerName = [order.payer?.name?.given_name, order.payer?.name?.surname]
+    .filter(Boolean)
+    .join(' ')
+  const captureId = unit?.payments?.captures?.[0]?.id
+  const addr = unit?.shipping?.address
+
+  return {
+    to,
+    customerName: meta.customerName || payerName || undefined,
+    sessionId: order.id,
+    paymentIntentId: captureId,
+    currency,
+    total,
+    shippingAmount,
+    shipRegion:
+      shipRegion === 'usa'
+        ? 'USA'
+        : shipRegion === 'europe'
+          ? 'Europe'
+          : shipRegion || undefined,
+    lines,
+    shippingAddress: addr
+      ? {
+          name: unit?.shipping?.name?.full_name || undefined,
+          line1: addr.address_line_1 || undefined,
+          line2: addr.address_line_2 || undefined,
+          city: addr.admin_area_2 || undefined,
+          state: addr.admin_area_1 || undefined,
+          postal_code: addr.postal_code || undefined,
+          country: addr.country_code || undefined,
         }
       : undefined,
   }

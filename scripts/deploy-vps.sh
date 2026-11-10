@@ -51,9 +51,36 @@ if [[ ! -d "$APP_DIR/.git" ]]; then
   git clone "$REPO" "$APP_DIR"
 fi
 cd "$APP_DIR"
+
+# ── Protect runtime catalog + uploads (never erased by git deploy) ──
+PROTECT_DATA="$APP_DIR/littluxry-app/data"
+PROTECT_UPLOADS="$APP_DIR/littluxry-app/public/assets/uploads"
+SAFE_BACKUP="/opt/littluxry-runtime-safe"
+mkdir -p "$SAFE_BACKUP/data" "$SAFE_BACKUP/uploads"
+if [[ -d "$PROTECT_DATA" ]]; then
+  rsync -a "$PROTECT_DATA/" "$SAFE_BACKUP/data/" || true
+fi
+if [[ -d "$PROTECT_UPLOADS" ]]; then
+  rsync -a "$PROTECT_UPLOADS/" "$SAFE_BACKUP/uploads/" || true
+fi
+echo "Protected backup: $(ls "$SAFE_BACKUP/uploads" 2>/dev/null | wc -l) upload files · data=$(ls "$SAFE_BACKUP/data" 2>/dev/null | wc -l) files"
+
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
+# Hard reset code only — do NOT git clean uploads/data
 git reset --hard "origin/$BRANCH"
+# Explicitly refuse cleaning runtime dirs even if someone adds git clean later
+mkdir -p "$PROTECT_DATA" "$PROTECT_UPLOADS"
+# Restore products + media after reset (additive — never --delete into live uploads)
+rsync -a "$SAFE_BACKUP/data/" "$PROTECT_DATA/" || true
+rsync -a --ignore-existing "$SAFE_BACKUP/uploads/" "$PROTECT_UPLOADS/" || true
+# If live uploads somehow emptied, restore full backup
+LIVE_COUNT=$(ls "$PROTECT_UPLOADS" 2>/dev/null | wc -l | tr -d ' ')
+BAK_COUNT=$(ls "$SAFE_BACKUP/uploads" 2>/dev/null | wc -l | tr -d ' ')
+if [[ "${LIVE_COUNT:-0}" -lt "${BAK_COUNT:-0}" ]]; then
+  echo "WARN: uploads count dropped ($LIVE_COUNT < $BAK_COUNT) — restoring from safe backup"
+  rsync -a "$SAFE_BACKUP/uploads/" "$PROTECT_UPLOADS/"
+fi
 mkdir -p "$APP_DIR/littluxry-app"
 REMOTE
 
@@ -69,12 +96,13 @@ if [[ -d "$IMPORTS_DIR" ]] && compgen -G "$IMPORTS_DIR/*/*.*" > /dev/null; then
   echo "==> Syncing Yupoo/media imports to VPS (gitignored binaries)"
   ssh_cmd "$VPS" "mkdir -p '$APP_DIR/littluxry-app/public/assets/imports'"
   # Prefer rsync if available locally + remotely
+  # Additive only — never --delete (protects any server-side media)
   if command -v rsync >/dev/null && [[ -n "${SSHPASS:-}" ]] && command -v sshpass >/dev/null; then
-    sshpass -e rsync -az --delete \
+    sshpass -e rsync -az \
       -e "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=accept-new" \
       "$IMPORTS_DIR/" "$VPS:$APP_DIR/littluxry-app/public/assets/imports/"
   elif command -v rsync >/dev/null; then
-    rsync -az --delete -e "ssh -o StrictHostKeyChecking=accept-new" \
+    rsync -az -e "ssh -o StrictHostKeyChecking=accept-new" \
       "$IMPORTS_DIR/" "$VPS:$APP_DIR/littluxry-app/public/assets/imports/"
   else
     scp_cmd -r "$IMPORTS_DIR/." "$VPS:$APP_DIR/littluxry-app/public/assets/imports/"

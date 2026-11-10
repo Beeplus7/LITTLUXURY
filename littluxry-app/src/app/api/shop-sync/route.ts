@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import {
   emptyShopState,
+  productHasUploads,
   readShopState,
   writeShopState,
   type ShopSyncState,
 } from '@/lib/shopStateServer'
 import { normalizeEmail, type StaffMember } from '@/lib/shopStaff'
+import type { Product } from '@/data/products'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -94,15 +96,72 @@ export async function PUT(req: Request) {
       }
     }
 
+    const allowClear =
+      (body as { allowClearCatalog?: boolean }).allowClearCatalog === true
+
+    let products = current.products
+    const removedIds = Array.isArray(body.removedIds)
+      ? body.removedIds
+      : current.removedIds
+
+    if (Array.isArray(body.products)) {
+      // Block accidental full wipe of a live catalog
+      if (
+        body.products.length === 0 &&
+        current.products.length > 0 &&
+        !allowClear
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Refused empty catalog sync — uploaded products are protected. Delete items one-by-one in admin.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const incoming = body.products as Product[]
+      const incomingIds = new Set(
+        incoming.map((p) => p.id).filter(Boolean) as string[],
+      )
+      const removed = new Set(removedIds)
+      // Keep any uploaded products missing from this sync (unless explicitly removed)
+      const protectedKeep = (current.products as Product[]).filter((p) => {
+        if (!p?.id) return false
+        if (incomingIds.has(p.id)) return false
+        if (removed.has(p.id) || (p.slug && removed.has(p.slug))) return false
+        return productHasUploads(p)
+      })
+      products = [...incoming, ...protectedKeep]
+    }
+
+    // Never drop upload-backed media library entries unless explicitly hidden
+    let userMedia = Array.isArray(body.userMedia)
+      ? body.userMedia
+      : current.userMedia
+    if (Array.isArray(body.userMedia) && current.userMedia.length) {
+      const incomingMediaIds = new Set(
+        body.userMedia.map((m) => m.id).filter(Boolean),
+      )
+      const hidden = new Set(
+        Array.isArray(body.hiddenMediaIds)
+          ? body.hiddenMediaIds
+          : current.hiddenMediaIds,
+      )
+      const keepMedia = current.userMedia.filter((m) => {
+        if (incomingMediaIds.has(m.id)) return false
+        if (hidden.has(m.id)) return false
+        const src = (m as { src?: string }).src || ''
+        return src.includes('/assets/uploads/')
+      })
+      userMedia = [...body.userMedia, ...keepMedia]
+    }
+
     const next: ShopSyncState = {
       staff,
-      products: Array.isArray(body.products) ? body.products : current.products,
-      removedIds: Array.isArray(body.removedIds)
-        ? body.removedIds
-        : current.removedIds,
-      userMedia: Array.isArray(body.userMedia)
-        ? body.userMedia
-        : current.userMedia,
+      products,
+      removedIds,
+      userMedia,
       hiddenMediaIds: Array.isArray(body.hiddenMediaIds)
         ? body.hiddenMediaIds
         : current.hiddenMediaIds,

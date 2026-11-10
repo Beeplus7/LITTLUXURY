@@ -1,56 +1,88 @@
 import { NextResponse } from 'next/server'
-import { getStripe, stripeConfigured } from '@/lib/stripe'
 import {
-  orderEmailFromCheckoutSession,
+  orderEmailFromPayPalOrder,
   sendOrderConfirmationEmail,
 } from '@/lib/orderEmail'
+import {
+  paypalConfigured,
+  paypalFetch,
+  type PayPalOrder,
+} from '@/lib/paypal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+function isPaid(order: PayPalOrder) {
+  const status = order.status?.toUpperCase()
+  if (status === 'COMPLETED') return true
+  const capture = order.purchase_units?.[0]?.payments?.captures?.[0]?.status
+  return capture?.toUpperCase() === 'COMPLETED'
+}
+
 export async function POST(request: Request) {
-  if (!stripeConfigured()) {
+  if (!paypalConfigured()) {
     return NextResponse.json(
-      { error: 'Stripe is not configured' },
+      { error: 'PayPal is not configured' },
       { status: 503 },
     )
   }
 
-  let body: { sessionId?: string }
+  let body: { orderId?: string; token?: string; sessionId?: string }
   try {
-    body = (await request.json()) as { sessionId?: string }
+    body = (await request.json()) as typeof body
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const sessionId = body.sessionId?.trim()
-  if (!sessionId) {
-    return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
+  const orderId = (
+    body.orderId ||
+    body.token ||
+    body.sessionId ||
+    ''
+  ).trim()
+  if (!orderId) {
+    return NextResponse.json(
+      { error: 'orderId is required' },
+      { status: 400 },
+    )
   }
 
   try {
-    const stripe = getStripe()
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['line_items', 'payment_intent'],
-    })
+    let order = await paypalFetch<PayPalOrder>(
+      `/v2/checkout/orders/${encodeURIComponent(orderId)}`,
+      { method: 'GET' },
+    )
 
-    if (session.payment_status !== 'paid' && session.status !== 'complete') {
+    if (!isPaid(order)) {
+      try {
+        order = await paypalFetch<PayPalOrder>(
+          `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`,
+          { method: 'POST', json: {} },
+        )
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : ''
+        if (/already.?captured|ORDER_ALREADY_CAPTURED/i.test(msg)) {
+          order = await paypalFetch<PayPalOrder>(
+            `/v2/checkout/orders/${encodeURIComponent(orderId)}`,
+            { method: 'GET' },
+          )
+        } else {
+          throw e
+        }
+      }
+    }
+
+    if (!isPaid(order)) {
       return NextResponse.json(
-        { error: 'Payment not completed yet', status: session.payment_status },
+        { error: 'Payment not completed yet', status: order.status },
         { status: 402 },
       )
     }
 
-    const lineItems =
-      session.line_items?.data ??
-      (
-        await stripe.checkout.sessions.listLineItems(sessionId, { limit: 50 })
-      ).data
-
-    const payload = orderEmailFromCheckoutSession(session, lineItems)
+    const payload = orderEmailFromPayPalOrder(order)
     if (!payload) {
       return NextResponse.json(
-        { error: 'No customer email on this session' },
+        { error: 'No customer email on this PayPal order' },
         { status: 422 },
       )
     }
@@ -60,9 +92,9 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          stripeReceipt: true,
+          paypalReceipt: true,
           error: result.error,
-          hint: 'Stripe may still email a receipt. Add RESEND_API_KEY for branded LITT LUXURY mail.',
+          hint: 'PayPal may still email a receipt. Add RESEND_API_KEY for branded LITT LUXURY mail.',
         },
         { status: 503 },
       )
@@ -73,6 +105,7 @@ export async function POST(request: Request) {
       skipped: result.skipped,
       provider: 'provider' in result ? result.provider : undefined,
       to: payload.to,
+      orderId: order.id,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Confirm failed'

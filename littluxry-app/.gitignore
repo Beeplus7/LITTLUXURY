@@ -40,8 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# runtime shop / email state on the server
+# runtime shop / email state on the server — NEVER commit or deploy-wipe
 /data/
+/public/assets/uploads/
+/public/assets/uploads/**
 
 node_modules/
 .next/

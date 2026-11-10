@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getStripe, stripeConfigured } from '@/lib/stripe'
+import {
+  approveUrl,
+  paypalConfigured,
+  paypalFetch,
+  paypalMode,
+  type PayPalOrder,
+} from '@/lib/paypal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,20 +34,16 @@ function publicOrigin(request: Request) {
   return `${proto}://${host}`
 }
 
-function absoluteImage(src: string | undefined, origin: string): string[] {
-  if (!src) return []
-  if (src.startsWith('data:') || src.startsWith('local-media:')) return []
-  if (src.startsWith('http://') || src.startsWith('https://')) return [src]
-  if (src.startsWith('/')) return [`${origin}${src}`]
-  return []
+function money(n: number) {
+  return (Math.round(Number(n) * 100) / 100).toFixed(2)
 }
 
 export async function POST(request: Request) {
-  if (!stripeConfigured()) {
+  if (!paypalConfigured()) {
     return NextResponse.json(
       {
         error:
-          'Stripe is not configured. Add STRIPE_SECRET_KEY on the server.',
+          'PayPal is not configured. Add NEXT_PUBLIC_PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.',
       },
       { status: 503 },
     )
@@ -78,130 +80,114 @@ export async function POST(request: Request) {
   const origin = publicOrigin(request)
   const shipping = Math.max(0, Number(body.shipping) || 0)
   const shipRegion = body.shipRegion === 'usa' ? 'usa' : 'europe'
+  const customerEmail = body.email?.trim() || ''
+  const customerName = (body.customerName || '').trim().slice(0, 80)
+
+  const paypalItems = items.map((item) => {
+    const qty = Math.min(99, Math.max(1, Math.round(item.quantity)))
+    const label = [item.color, item.size].filter(Boolean).join(' · ')
+    return {
+      name: item.name.slice(0, 127),
+      description: label ? label.slice(0, 127) : undefined,
+      quantity: String(qty),
+      unit_amount: {
+        currency_code: 'USD',
+        value: money(item.price),
+      },
+      category: 'PHYSICAL_GOODS' as const,
+      sku: String(item.productId || '').slice(0, 127) || undefined,
+    }
+  })
+
+  const itemTotal = items.reduce(
+    (sum, item) =>
+      sum +
+      Number(item.price) *
+        Math.min(99, Math.max(1, Math.round(item.quantity))),
+    0,
+  )
+  const orderTotal = itemTotal + shipping
 
   try {
-    const stripe = getStripe()
-    const line_items = items.map((item) => {
-      const label = [item.color, item.size].filter(Boolean).join(' · ')
-      return {
-        quantity: Math.min(99, Math.max(1, Math.round(item.quantity))),
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(Number(item.price) * 100),
-          product_data: {
-            name: item.name.slice(0, 120),
-            description: label ? label.slice(0, 200) : undefined,
-            images: absoluteImage(item.image, origin).slice(0, 1),
-            metadata: {
-              productId: String(item.productId || ''),
-              color: String(item.color || ''),
-              size: String(item.size || ''),
+    const order = await paypalFetch<PayPalOrder>('/v2/checkout/orders', {
+      method: 'POST',
+      json: {
+        intent: 'CAPTURE',
+        purchase_units: [
+          {
+            description: 'LITT LUXURY order',
+            custom_id: JSON.stringify({
+              shipRegion,
+              customerName: customerName.slice(0, 40),
+              email: customerEmail.slice(0, 60),
+            }).slice(0, 127),
+            amount: {
+              currency_code: 'USD',
+              value: money(orderTotal),
+              breakdown: {
+                item_total: {
+                  currency_code: 'USD',
+                  value: money(itemTotal),
+                },
+                shipping: {
+                  currency_code: 'USD',
+                  value: money(shipping),
+                },
+              },
             },
+            items: paypalItems,
           },
-        },
-      }
-    })
-
-    if (shipping > 0) {
-      line_items.push({
-        quantity: 1,
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(shipping * 100),
-          product_data: {
-            name: `Shipping · ${shipRegion === 'usa' ? 'USA' : 'Europe'}`,
-            description: undefined,
-            images: [],
-            metadata: {
-              productId: 'shipping',
-              color: '',
-              size: '',
-            },
-          },
-        },
-      })
-    }
-
-    const customerEmail = body.email?.trim() || undefined
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items,
-      customer_email: customerEmail,
-      // Stripe’s own payment receipt (Dashboard → Settings → Emails must allow it)
-      payment_intent_data: customerEmail
-        ? { receipt_email: customerEmail }
-        : undefined,
-      shipping_address_collection: {
-        allowed_countries: shipRegion === 'usa' ? ['US'] : [
-          'AT',
-          'BE',
-          'BG',
-          'HR',
-          'CY',
-          'CZ',
-          'DK',
-          'EE',
-          'FI',
-          'FR',
-          'DE',
-          'GR',
-          'HU',
-          'IE',
-          'IT',
-          'LV',
-          'LT',
-          'LU',
-          'MT',
-          'NL',
-          'PL',
-          'PT',
-          'RO',
-          'SK',
-          'SI',
-          'ES',
-          'SE',
-          'GB',
-          'NO',
-          'CH',
         ],
-      },
-      phone_number_collection: { enabled: true },
-      success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/checkout?canceled=1`,
-      metadata: {
-        shipRegion,
-        customerName: (body.customerName || '').slice(0, 80),
-        itemCount: String(items.length),
+        payer: customerEmail
+          ? {
+              email_address: customerEmail,
+              name: customerName
+                ? {
+                    given_name: customerName.split(/\s+/)[0]?.slice(0, 140),
+                    surname: customerName
+                      .split(/\s+/)
+                      .slice(1)
+                      .join(' ')
+                      .slice(0, 140) || undefined,
+                  }
+                : undefined,
+            }
+          : undefined,
+        application_context: {
+          brand_name: 'LITT LUXURY',
+          landing_page: 'LOGIN',
+          user_action: 'PAY_NOW',
+          shipping_preference: 'GET_FROM_FILE',
+          return_url: `${origin}/checkout/success`,
+          cancel_url: `${origin}/checkout?canceled=1`,
+        },
       },
     })
 
-    if (!session.url) {
+    const url = approveUrl(order)
+    if (!url) {
       return NextResponse.json(
-        { error: 'Stripe did not return a checkout URL' },
+        { error: 'PayPal did not return an approval URL' },
         { status: 502 },
       )
     }
 
     return NextResponse.json({
       ok: true,
-      url: session.url,
-      id: session.id,
+      url,
+      id: order.id,
     })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Stripe checkout failed'
-    console.error('[stripe checkout]', msg)
+    const msg = e instanceof Error ? e.message : 'PayPal checkout failed'
+    console.error('[paypal checkout]', msg)
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 }
 
 export async function GET() {
   return NextResponse.json({
-    configured: stripeConfigured(),
-    mode: process.env.STRIPE_SECRET_KEY?.startsWith('sk_live')
-      ? 'live'
-      : process.env.STRIPE_SECRET_KEY?.startsWith('sk_test')
-        ? 'test'
-        : 'missing',
+    configured: paypalConfigured(),
+    mode: paypalConfigured() ? paypalMode() : 'missing',
+    provider: 'paypal',
   })
 }

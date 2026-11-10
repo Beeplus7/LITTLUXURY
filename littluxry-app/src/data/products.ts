@@ -147,12 +147,14 @@ export function isPublishedProduct(product: Product): boolean {
 }
 
 function looksLikeVideo(src: string): boolean {
-  const lower = src.toLowerCase().split('?')[0] || ''
+  const lower = src.toLowerCase()
+  const pathOnly = lower.split('?')[0] || ''
   return (
-    lower.endsWith('.mp4') ||
-    lower.endsWith('.webm') ||
-    lower.endsWith('.mov') ||
-    lower.endsWith('.m4v') ||
+    pathOnly.endsWith('.mp4') ||
+    pathOnly.endsWith('.webm') ||
+    pathOnly.endsWith('.mov') ||
+    pathOnly.endsWith('.m4v') ||
+    lower.includes('mediatype=video') ||
     src.startsWith('data:video') ||
     src.startsWith('local-media:video:')
   )

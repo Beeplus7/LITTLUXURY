@@ -35,11 +35,11 @@ function CheckoutInner() {
     }
   }, [searchParams, toast])
 
-  async function payWithStripe(e?: FormEvent) {
+  async function payWithPayPal(e?: FormEvent) {
     e?.preventDefault()
     if (!cartItems.length) return
     if (!email.trim() || !email.includes('@')) {
-      setError('Enter a valid email for your Stripe receipt')
+      setError('Enter a valid email for your order confirmation')
       return
     }
     setLoading(true)
@@ -58,11 +58,11 @@ function CheckoutInner() {
       })
       const data = (await res.json()) as { url?: string; error?: string }
       if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Could not start Stripe Checkout')
+        throw new Error(data.error || 'Could not start PayPal Checkout')
       }
       window.location.assign(data.url)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Stripe checkout failed'
+      const msg = err instanceof Error ? err.message : 'PayPal checkout failed'
       setError(msg)
       toast(msg)
       setLoading(false)
@@ -88,10 +88,9 @@ function CheckoutInner() {
         <div>
           <h1 className="serif text-4xl">Checkout</h1>
           <p className="mt-2 text-sm text-[#b8b0a4]">
-            Secure card payment via Stripe. You’ll finish on Stripe’s checkout
-            page.
+            Secure payment via PayPal. You’ll finish on PayPal’s checkout page.
           </p>
-          <form className="mt-8 space-y-3" onSubmit={(e) => void payWithStripe(e)}>
+          <form className="mt-8 space-y-3" onSubmit={(e) => void payWithPayPal(e)}>
             <label className="block text-[12px] text-[#b8b0a4]">
               Full name
               <input
@@ -101,7 +100,7 @@ function CheckoutInner() {
               />
             </label>
             <label className="block text-[12px] text-[#b8b0a4]">
-              Email (receipt)
+              Email (confirmation)
               <input
                 type="email"
                 required
@@ -142,12 +141,12 @@ function CheckoutInner() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-4 w-full rounded-full bg-[#635BFF] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-60"
+              className="mt-4 w-full rounded-full bg-[#0070BA] py-3.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-60"
             >
-              {loading ? 'Opening Stripe…' : `Pay $${total} with Stripe`}
+              {loading ? 'Opening PayPal…' : `Pay $${total} with PayPal`}
             </button>
             <p className="text-center text-[11px] text-[#6a655c]">
-              Cards · Apple Pay / Google Pay when available on Stripe Checkout
+              PayPal balance · linked cards · Pay Later when available
             </p>
           </form>
         </div>
